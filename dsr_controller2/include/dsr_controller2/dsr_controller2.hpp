@@ -59,6 +59,7 @@
 #include <dsr_msgs2/msg/speedl_rt_stream.hpp>
 #include <dsr_msgs2/msg/torque_rt_stream.hpp>
 #include <dsr_msgs2/msg/robot_error.hpp>
+#include <dsr_msgs2/msg/robot_disconnection.hpp>
 
 
 
@@ -514,6 +515,7 @@ namespace DRFL_CALLBACKS {
   void OnMonitoringAccessControlCB(const MONITORING_ACCESS_CONTROL eAccCtrl);
   void OnLogAlarm(LPLOG_ALARM pLogAlarm);
   void OnMonitoringDataExCB(const LPMONITORING_DATA_EX pData);
+  void OnDisConnected();
 }
 
 
@@ -551,6 +553,7 @@ public:
   controller_interface::CallbackReturn on_shutdown(
     const rclcpp_lifecycle::State & previous_state) override;
   
+  rclcpp::Publisher<dsr_msgs2::msg::RobotDisconnection>::SharedPtr disconnect_pub_;
   rclcpp::Publisher<dsr_msgs2::msg::RobotError>::SharedPtr error_log_pub_;
 protected:
   std::vector<std::string> joint_names_;
