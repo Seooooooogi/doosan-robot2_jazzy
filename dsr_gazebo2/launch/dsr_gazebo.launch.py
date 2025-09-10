@@ -43,7 +43,7 @@ ARGUMENTS =[
     DeclareLaunchArgument('R',            default_value = '0',     description = 'Location Roll on Gazebo' ),
     DeclareLaunchArgument('P',            default_value = '0',     description = 'Location Pitch on Gazebo'),
     DeclareLaunchArgument('Y',            default_value = '0',     description = 'Location Yaw on Gazebo'  ),
-    DeclareLaunchArgument('use_sim_time', default_value='false',   description='Use simulation time'       ),
+    DeclareLaunchArgument('use_sim_time', default_value ='false',  description = 'Use simulation time'     ),
     DeclareLaunchArgument('remap_tf',     default_value = 'false', description = 'REMAP TF'                ),
 ]
 
