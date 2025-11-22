@@ -53,7 +53,7 @@ def adjust_dsr_controller_yaml(yaml_path, active_joints, passive_joints):
     return temp_yaml
 
 
-def parse_joints_from_urdf(model, color=None, name=None, host=None, rt_host=None, port=None, mode=None):
+def parse_joints_from_urdf(model, color=None, name=None, host=None, rt_host=None, port=None, mode=None, update_rate=None):
     if color is None:
         color = "white"
 
@@ -74,6 +74,7 @@ def parse_joints_from_urdf(model, color=None, name=None, host=None, rt_host=None
             f'port:={port}',
             f'mode:={mode}',
             f'model:={model}',
+            f'update_rate:={update_rate}',
         ]
     ).decode('utf-8')
 

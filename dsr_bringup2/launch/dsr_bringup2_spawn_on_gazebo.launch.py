@@ -30,6 +30,9 @@ from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription, SetLaunchConfiguration
 
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import OpaqueFunction, SetLaunchConfiguration
+from launch.launch_context import LaunchContext
+from dsr_bringup2.utils import read_update_rate, show_git_info
 
 def print_launch_configuration_value(context, *args, **kwargs):
     gz_value = LaunchConfiguration('gz').perform(context)
@@ -63,6 +66,8 @@ def generate_launch_description():
     # Initialize Arguments
     gui = LaunchConfiguration("gui")
     mode = LaunchConfiguration("mode")
+    update_rate = str(read_update_rate()) # get update_rate from yaml
+    show_git_info() # print git info
     # Get URDF via xacro
     robot_description_content = Command(
         [
@@ -76,6 +81,13 @@ def generate_launch_description():
                 ]
             ),
             ".urdf.xacro",
+            " name:=", LaunchConfiguration('name'),
+            " host:=", LaunchConfiguration('host'),
+            " rt_host:=", LaunchConfiguration('rt_host'),
+            " port:=", LaunchConfiguration('port'),
+            " mode:=", LaunchConfiguration('mode'),
+            " model:=", LaunchConfiguration('model'),
+            " update_rate:=", update_rate,
         ]
     )
 

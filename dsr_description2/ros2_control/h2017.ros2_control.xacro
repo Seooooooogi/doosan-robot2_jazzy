@@ -8,6 +8,7 @@
   port:=12345
   mode:=real
   model:=h2017
+  update_rate
   ">
     <xacro:property name="double_pi" value="${2.0 * pi}"/>
     <xacro:property name="neg_double_pi" value="${-2.0 * pi}"/>
@@ -22,6 +23,7 @@
         <param name="port">${port}</param>
         <param name="mode">${mode}</param>
         <param name="model">${model}</param>
+        <param name="update_rate">${update_rate}</param>
       </hardware>
 
       <joint name="joint_1">

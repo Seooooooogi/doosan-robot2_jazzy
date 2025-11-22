@@ -17,9 +17,11 @@
 # 
 
 import os
+import re
+import tempfile
 
 from launch import LaunchDescription
-from launch.actions import RegisterEventHandler, DeclareLaunchArgument, LogInfo, OpaqueFunction, SetLaunchConfiguration, TimerAction
+from launch.actions import ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, LogInfo, OpaqueFunction, SetLaunchConfiguration, TimerAction
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution, FindExecutable
 from launch_ros.actions import Node
@@ -29,6 +31,7 @@ from ament_index_python.packages import get_package_share_directory
 
 from moveit_configs_utils import MoveItConfigsBuilder
 from dsr_bringup2.controller_config import adjust_dsr_controller_yaml, parse_joints_from_urdf
+from dsr_bringup2.utils import read_update_rate
 
 # Generate robot_description and select controller YAML based on the URDF model.
 def generate_robot_description_action(context, *args, **kwargs):
@@ -40,10 +43,11 @@ def generate_robot_description_action(context, *args, **kwargs):
     rt_host = LaunchConfiguration('rt_host').perform(context)
     port = LaunchConfiguration('port').perform(context)
     mode = LaunchConfiguration('mode').perform(context)
+    update_rate = read_update_rate() # get update_rate from yaml
 
     # Parse URDF to extract active and passive joints
-    urdf_xml, active_joints, passive_joints = parse_joints_from_urdf(model, color, name, host, rt_host, port, mode)
-    print(f"[DEBUG] model={model}, color={color}, name={name}, host={host}, rt_host={rt_host}, port={port}, mode={mode}")
+    urdf_xml, active_joints, passive_joints = parse_joints_from_urdf(model, color, name, host, rt_host, port, mode, update_rate)
+    print(f"[DEBUG] model={model}, color={color}, name={name}, host={host}, rt_host={rt_host}, port={port}, mode={mode}, update_rate={update_rate}")
     print(f"[DEBUG] active_joints={active_joints}")
     print(f"[DEBUG] passive_joints={passive_joints}")
 
@@ -93,7 +97,7 @@ def rviz_and_move_group_fn(context):
         .robot_description(file_path=f"config/{model_value}.urdf.xacro")
         .robot_description_semantic(file_path="config/dsr.srdf.xacro", mappings={'gripper': LaunchConfiguration('gripper')})
         .trajectory_execution(file_path="config/moveit_controllers.yaml")
-        .planning_pipelines(pipelines=["ompl", "chomp"],      # List of planning pipelines to load (each loaded from config/<name>_planning.yaml)
+        .planning_pipelines(pipelines=["ompl", "chomp", "pilz_industrial_motion_planner"],      # List of planning pipelines to load (each loaded from config/<name>_planning.yaml)
                             default_planning_pipeline="ompl", # Name of the default planning pipeline (used if none is explicitly selected)
                             load_all= False                   # If pipelines is None: True loads all from config/default packages; False loads only from config package
                             )
@@ -105,10 +109,12 @@ def rviz_and_move_group_fn(context):
         {"robot_description": ParameterValue(LaunchConfiguration('robot_description'), value_type=str)},
     ]
 
+    ns_value = LaunchConfiguration('name').perform(context)
+
     run_move_group_node = Node(
         package="moveit_ros_move_group",
         executable="move_group",
-        namespace=LaunchConfiguration('name'),
+        namespace=ns_value,
         output="screen",
         parameters=common_params,
     )
@@ -116,15 +122,45 @@ def rviz_and_move_group_fn(context):
     rviz_base = os.path.join(get_package_share_directory(package_name), "launch")
     rviz_full_config = os.path.join(rviz_base, "moveit.rviz")
 
+    # dynamically modify RViz config to set correct namespace
+    with open(rviz_full_config, 'r') as f:
+        content = f.read()
+
+    target_ns = f"/{ns_value}" if ns_value else ""
+
+    new_content = re.sub(
+        r'Move Group Namespace:.*', 
+        f'Move Group Namespace: {target_ns}', 
+        content
+    )
+
+    tmp_rviz = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.rviz')
+    tmp_rviz.write(new_content)
+    tmp_rviz.close()
+    tmp_rviz_path = tmp_rviz.name
+
+    print(f"[INFO] Generated dynamic RViz config: {tmp_rviz_path} (NS: {target_ns})")
+
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
         name="rviz2",
         output="log",
-        arguments=["-d", rviz_full_config],
+        namespace=ns_value,
+        arguments=["-d", tmp_rviz_path],
         parameters=common_params,
     )
-    return [run_move_group_node, rviz_node]
+
+    cleanup_rviz_file = RegisterEventHandler(
+        OnProcessExit(
+            target_action=rviz_node,
+            on_exit=[
+                LogInfo(msg=f">> Cleaning up temp RViz config: {tmp_rviz_path}"),
+                ExecuteProcess(cmd=['rm', tmp_rviz_path], output='screen')
+            ]
+        )
+    )
+    return [run_move_group_node, rviz_node, cleanup_rviz_file]
 
 # sets up the parameters for the controller manager node, if 'gripper' argument is setted, it additionally loads the 'gripper_controller.yaml' file
 def control_node_fn(context):
