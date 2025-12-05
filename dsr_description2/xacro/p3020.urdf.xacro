@@ -9,6 +9,7 @@
   <xacro:arg name="rt_host" default=""/>
   <xacro:arg name="mode" default=""/>
   <xacro:arg name="model" default=""/>
+  <xacro:arg name="update_rate" default=""/>
 
   <!-- gripper control argument -->
   <xacro:arg name="gripper"              default="none"/>         <!-- none | robotique -->
@@ -22,6 +23,7 @@
   <xacro:property name="port" value="$(arg port)"/>
   <xacro:property name="mode" value="$(arg mode)"/>
   <xacro:property name="model" value="$(arg model)"/>
+  <xacro:property name="update_rate" value="$(arg update_rate)"/>
 
   <xacro:property name="cr" value="$(arg color)"/>
 
@@ -55,6 +57,7 @@
       port="${port}"
       mode="${mode}"
       model="${model}"
+      update_rate="${update_rate}"
     />
   </xacro:unless>
 

@@ -8,7 +8,7 @@
   port:=12345
   mode:=real
   model:=p3020
-  update_rate
+  update_rate:=100
   ">
 
     <xacro:property name="double_pi" value="${2.0 * pi}"/>
