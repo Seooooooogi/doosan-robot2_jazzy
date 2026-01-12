@@ -203,15 +203,6 @@ def generate_launch_description():
     #     arguments=["dsr_joint_trajectory", "-c", "dsr/controller_manager", "-n", "dsr"],
     # )
 
-
-    # Delay rviz start after `joint_state_broadcaster`
-    delay_rviz_after_joint_state_broadcaster_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=robot_controller_spawner,
-            on_exit=[rviz_node],
-        )
-    )
-
     # Delay start of robot_controller after `joint_state_broadcaster`
     delay_robot_controller_spawner_after_joint_state_broadcaster_spawner = RegisterEventHandler(
         event_handler=OnProcessExit(
@@ -224,9 +215,8 @@ def generate_launch_description():
         run_emulator_node,
         original_tf_nodes,
         remapped_tf_nodes,
-        robot_controller_spawner,
+        delay_robot_controller_spawner_after_joint_state_broadcaster_spawner,
         joint_state_broadcaster_spawner,
-        delay_rviz_after_joint_state_broadcaster_spawner,
         control_node,
     ]
 
