@@ -1,12 +1,17 @@
 {
 	"name": "Doosan Robotics ROS2 Dev Container",
-	"image": "osrf/ros:jazzy-desktop",
-	"workspaceFolder": "/workspaces/doosan_ws/src/doosan-robot2",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".."
+	},
+	"remoteUser": "doosan-robotics",
+	"workspaceFolder": "/workspace/doosan_ws/src/doosan-robot2",
 	"workspaceMount": "source=${localWorkspaceFolder},target=${containerWorkspaceFolder},type=bind",
 	"postCreateCommand": ".devcontainer/post-command.sh",
 	"runArgs": [
 		"--network=host",
 		"--volume=/tmp/.X11-unix:/tmp/.X11-unix",
+		"--volume=${localEnv:HOME}/.Xauthority:/tmp/.Xauthority:ro",
 		"--ipc=host",
 		"--privileged"
 	],
@@ -19,6 +24,7 @@
 	},
 	"containerEnv": {
 		"DISPLAY": "${localEnv:DISPLAY}",
+		"XAUTHORITY": "/tmp/.Xauthority",
 		"LIBGL_ALWAYS_SOFTWARE": "1",
 		"QT_X11_NO_MITSHM": "1",
 		"XDG_RUNTIME_DIR": "/tmp/runtime-root"
