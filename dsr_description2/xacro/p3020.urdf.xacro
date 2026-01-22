@@ -46,7 +46,10 @@
 
   <xacro:if value="${gz}">
     <xacro:include filename="$(find dsr_description2)/ros2_control/p3020.gz_ros2_control.xacro"/>
-    <xacro:p3020_gz_ros2_control namespace="$(arg namespace)"/>
+    <xacro:p3020_gz_ros2_control 
+      namespace="$(arg namespace)"
+      update_rate="${update_rate}"
+    />
   </xacro:if>
   <xacro:unless value="${gz}">
     <xacro:include filename="$(find dsr_description2)/ros2_control/p3020.ros2_control.xacro" />

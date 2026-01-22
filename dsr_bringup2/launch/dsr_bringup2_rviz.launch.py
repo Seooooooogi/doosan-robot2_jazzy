@@ -90,11 +90,6 @@ def generate_launch_description():
         PathJoinSubstitution([
             FindPackageShare("dsr_controller2"),
             "config",
-            "dsr_update_rate.yaml",
-        ]),
-        PathJoinSubstitution([
-            FindPackageShare("dsr_controller2"),
-            "config",
             "dsr_controller2.yaml",
         ])
     ]

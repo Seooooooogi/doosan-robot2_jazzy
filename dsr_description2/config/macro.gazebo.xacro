@@ -4,7 +4,7 @@
   <xacro:macro name="dsr_gazebo" params="namespace">
     <!-- ros_control plugin -->
     <gazebo>
-      <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
         <ros>
           <namespace>$(arg namespace)</namespace>
         </ros>

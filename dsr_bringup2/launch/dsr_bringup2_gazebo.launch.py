@@ -26,6 +26,7 @@ from launch.conditions import IfCondition, UnlessCondition
 
 from launch_ros.actions import Node, SetRemap
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import IncludeLaunchDescription, SetLaunchConfiguration, GroupAction
 
@@ -90,7 +91,7 @@ def generate_launch_description():
         ]
     )
 
-    robot_description = {"robot_description": robot_description_content}
+    robot_description = {"robot_description": ParameterValue(robot_description_content, value_type=str)}
 
     robot_controllers = PathJoinSubstitution(
         [
@@ -149,9 +150,7 @@ def generate_launch_description():
         name='robot_state_publisher',
         namespace=LaunchConfiguration('name'),
         output='both',
-        parameters=[{
-            'robot_description': Command(['xacro', ' ', xacro_path, '/', LaunchConfiguration('model'), '.urdf.xacro color:=', LaunchConfiguration('color')])
-        }],
+        parameters=[robot_description],
     )
     
     rviz_node = Node(
@@ -169,7 +168,6 @@ def generate_launch_description():
         namespace=LaunchConfiguration('name'),
         executable="spawner",
         arguments=["joint_state_broadcaster", "-c", "controller_manager"],
-        parameters=[PathJoinSubstitution([FindPackageShare("dsr_controller2"), "config", "joint_state_broadcaster.yaml"])]
     )
 
     robot_controller_spawner = Node(
