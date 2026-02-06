@@ -11,7 +11,7 @@ jobs:
       - name: Checkout ros2-dev repository
         uses: actions/checkout@v4
         with:
-          ref: github-jazzy
+          ref: jazzy
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download ARM64 library (24.04)
@@ -59,9 +59,9 @@ jobs:
 
           Auto-synced from dsg-robotics/drfl-example
           Triggered by: ${{ github.event.client_payload.ref }}"
-          git push origin github-jazzy
+          git push origin jazzy
 
       - name: Summary
         if: steps.check_changes.outputs.changed == 'true'
         run: |
-          echo "Libraries and headers successfully synced to ros2-dev github-jazzy branch"
+          echo "Libraries and headers successfully synced to ros2-dev jazzy branch"
