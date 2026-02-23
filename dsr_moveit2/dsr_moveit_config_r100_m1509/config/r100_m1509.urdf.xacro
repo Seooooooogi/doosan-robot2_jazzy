@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="r100_m1509">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    <xacro:arg name="color" default="white" />
+    <xacro:arg name="arm_prefix" default="arm_" />
+    <xacro:arg name="mount_xyz" default="0 0 0" />
+    <xacro:arg name="mount_rpy" default="0 0 0" />
+
+    <link name="world"/>
+    <joint name="world_fixed" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <parent link="world"/>
+        <child link="base_link"/>
+    </joint>
+    
+    <!-- Import R100 + M1013 composite -->
+    <xacro:include filename="$(find dsr_description2)/xacro/r100_m1509.urdf.xacro" />
+    <xacro:r100_m1509 color="$(arg color)" arm_prefix="$(arg arm_prefix)" mount_xyz="$(arg mount_xyz)" mount_rpy="$(arg mount_rpy)"/>
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="m1509.ros2_control.xacro" />
+
+
+    <xacro:m1509_ros2_control
+      name="FakeSystem"
+      initial_positions_file="$(arg initial_positions_file)"
+    />
+
+</robot>

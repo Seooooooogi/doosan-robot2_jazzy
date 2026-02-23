@@ -1,0 +1,184 @@
+<?xml version="1.0"?>
+<robot name="r100_m1509_dual" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="gripper" default="none"/>
+  <xacro:property name="grip" value="${xacro.arg('gripper')}"/>
+
+  <group name="left_arm">
+    <chain base_link="arm_base_link" tip_link="arm_link_6" />
+  </group>
+
+  <group name="right_arm">
+    <chain base_link="arm2_base_link" tip_link="arm2_link_6" />
+  </group>
+
+  <group name="dual_arm">
+    <group name="left_arm"/>
+    <group name="right_arm"/>
+  </group>
+
+  <group_state name="all-zeros" group="left_arm">
+    <joint name="arm_joint_1" value="0"/>
+    <joint name="arm_joint_2" value="0"/>
+    <joint name="arm_joint_3" value="0"/>
+    <joint name="arm_joint_4" value="0"/>
+    <joint name="arm_joint_5" value="0"/>
+    <joint name="arm_joint_6" value="0"/>
+  </group_state>
+
+  <group_state name="all-zeros" group="right_arm">
+    <joint name="arm2_joint_1" value="0"/>
+    <joint name="arm2_joint_2" value="0"/>
+    <joint name="arm2_joint_3" value="0"/>
+    <joint name="arm2_joint_4" value="0"/>
+    <joint name="arm2_joint_5" value="0"/>
+    <joint name="arm2_joint_6" value="0"/>
+  </group_state>
+
+  <group_state name="all-zeros" group="dual_arm">
+    <joint name="arm_joint_1" value="0"/>
+    <joint name="arm_joint_2" value="0"/>
+    <joint name="arm_joint_3" value="0"/>
+    <joint name="arm_joint_4" value="0"/>
+    <joint name="arm_joint_5" value="0"/>
+    <joint name="arm_joint_6" value="0"/>
+    <joint name="arm2_joint_1" value="0"/>
+    <joint name="arm2_joint_2" value="0"/>
+    <joint name="arm2_joint_3" value="0"/>
+    <joint name="arm2_joint_4" value="0"/>
+    <joint name="arm2_joint_5" value="0"/>
+    <joint name="arm2_joint_6" value="0"/>
+  </group_state>
+
+  <virtual_joint name="FixedBase" type="fixed" parent_frame="world" child_link="base_link"/>
+
+  <!-- Left arm collisions -->
+  <disable_collisions link1="arm_base_link" link2="arm_link_1" reason="Adjacent"/>
+  <disable_collisions link1="arm_base_link" link2="arm_link_3" reason="Never"/>
+  <disable_collisions link1="arm_link_1" link2="arm_link_2" reason="Adjacent"/>
+  <disable_collisions link1="arm_link_1" link2="arm_link_3" reason="Never"/>
+  <disable_collisions link1="arm_link_1" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="arm_link_1" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="arm_link_2" link2="arm_link_3" reason="Adjacent"/>
+  <disable_collisions link1="arm_link_2" link2="arm_link_4" reason="Never"/>
+  <disable_collisions link1="arm_link_2" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="arm_link_2" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="arm_link_3" link2="arm_link_4" reason="Adjacent"/>
+  <disable_collisions link1="arm_link_3" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="arm_link_3" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="arm_link_4" link2="arm_link_5" reason="Adjacent"/>
+  <disable_collisions link1="arm_link_4" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="arm_link_5" link2="arm_link_6" reason="Adjacent"/>
+
+  <!-- Right arm collisions -->
+  <disable_collisions link1="arm2_base_link" link2="arm2_link_1" reason="Adjacent"/>
+  <disable_collisions link1="arm2_base_link" link2="arm2_link_3" reason="Never"/>
+  <disable_collisions link1="arm2_link_1" link2="arm2_link_2" reason="Adjacent"/>
+  <disable_collisions link1="arm2_link_1" link2="arm2_link_3" reason="Never"/>
+  <disable_collisions link1="arm2_link_1" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="arm2_link_1" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="arm2_link_2" link2="arm2_link_3" reason="Adjacent"/>
+  <disable_collisions link1="arm2_link_2" link2="arm2_link_4" reason="Never"/>
+  <disable_collisions link1="arm2_link_2" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="arm2_link_2" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="arm2_link_3" link2="arm2_link_4" reason="Adjacent"/>
+  <disable_collisions link1="arm2_link_3" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="arm2_link_3" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="arm2_link_4" link2="arm2_link_5" reason="Adjacent"/>
+  <disable_collisions link1="arm2_link_4" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="arm2_link_5" link2="arm2_link_6" reason="Adjacent"/>
+
+  <!-- R100 mount contact area: allow base contact with top/mount links -->
+  <disable_collisions link1="arm_base_link" link2="default_mount" reason="Never"/>
+  <disable_collisions link1="arm_base_link" link2="top_link" reason="Never"/>
+  <disable_collisions link1="arm_base_link" link2="riser_link" reason="Never"/>
+  <disable_collisions link1="arm2_base_link" link2="default_mount" reason="Never"/>
+  <disable_collisions link1="arm2_base_link" link2="top_link" reason="Never"/>
+  <disable_collisions link1="arm2_base_link" link2="riser_link" reason="Never"/>
+
+  <!-- Ignore all mobile-base vs arm collisions; keep arm-vs-arm collision checking enabled -->
+  <disable_collisions link1="chassis_link" link2="arm_base_link" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm_link_1" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm_link_2" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm_link_3" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm_link_4" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_base_link" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_link_1" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_link_2" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_link_3" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_link_4" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_base_link" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_link_1" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_link_2" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_link_3" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_link_4" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm_link_6" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_base_link" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_link_1" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_link_2" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_link_3" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_link_4" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_link_5" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm_link_6" reason="Never"/>
+
+  <disable_collisions link1="chassis_link" link2="arm2_base_link" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm2_link_1" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm2_link_2" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm2_link_3" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm2_link_4" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="chassis_link" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_base_link" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_link_1" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_link_2" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_link_3" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_link_4" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="riser_link" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_base_link" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_link_1" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_link_2" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_link_3" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_link_4" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="top_link" link2="arm2_link_6" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_base_link" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_link_1" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_link_2" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_link_3" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_link_4" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_link_5" reason="Never"/>
+  <disable_collisions link1="default_mount" link2="arm2_link_6" reason="Never"/>
+
+  <!-- Ignore mobile base internal collisions -->
+  <disable_collisions link1="chassis_link" link2="riser_link" reason="Adjacent"/>
+  <disable_collisions link1="riser_link" link2="top_link" reason="Adjacent"/>
+  <disable_collisions link1="chassis_link" link2="top_link" reason="Never"/>
+
+  <!-- Ignore world contact collisions for fixed-base mobile platform -->
+  <disable_collisions link1="world" link2="chassis_link" reason="Never"/>
+  <disable_collisions link1="world" link2="riser_link" reason="Never"/>
+  <disable_collisions link1="world" link2="top_link" reason="Never"/>
+  <disable_collisions link1="world" link2="default_mount" reason="Never"/>
+
+  <xacro:if value="${grip == 'robotiq_2f85'}">
+    <disable_collisions link1="robotiq_85_arm_base_link" link2="arm_link_6" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_arm_base_link" link2="robotiq_85_left_knuckle_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_arm_base_link" link2="robotiq_85_right_knuckle_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_left_finger_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_right_knuckle_link" link2="robotiq_85_right_finger_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_left_finger_tip_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_right_finger_link" link2="robotiq_85_right_finger_tip_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_left_knuckle_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_right_inner_knuckle_link" link2="robotiq_85_right_knuckle_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_left_finger_tip_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_right_inner_knuckle_link" link2="robotiq_85_right_finger_tip_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_arm_base_link" link2="robotiq_85_left_inner_knuckle_link" reason="Adjacent"/>
+    <disable_collisions link1="robotiq_85_arm_base_link" link2="robotiq_85_right_inner_knuckle_link" reason="Adjacent"/>
+    <disable_collisions link1="gripper_tcp_closed" link2="gripper_tcp_opened" reason="Adjacent"/>
+  </xacro:if>
+</robot>
