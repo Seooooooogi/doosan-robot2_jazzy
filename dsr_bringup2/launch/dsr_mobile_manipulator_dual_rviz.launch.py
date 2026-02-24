@@ -52,6 +52,7 @@ def generate_launch_description():
         DeclareLaunchArgument('left_init_on_start', default_value='true', description='Move left arm J1 to 180deg once at startup (dual only)'),
         DeclareLaunchArgument('use_joint_state_publisher', default_value='false', description='Publish joint_states for visualization'),
         DeclareLaunchArgument('use_nav2', default_value='true', description='Start Nav2 navigation stack'),
+        DeclareLaunchArgument('nav2_start_delay', default_value='3.0', description='Delay (sec) before starting Nav2 to wait for odom->base_link TF'),
         DeclareLaunchArgument('use_map', default_value='false', description='Use map_server + AMCL localization'),
         DeclareLaunchArgument('enable_nav2_fallback', default_value='false', description='Call lifecycle_manager startup fallback'),
         DeclareLaunchArgument('map', default_value='', description='Map yaml for map mode (use_map:=true)'),
@@ -575,7 +576,7 @@ def generate_launch_description():
             target_action=mobile_base_controller_spawner,
             on_exit=[
                 TimerAction(
-                    period=1.0,
+                    period=LaunchConfiguration('nav2_start_delay'),
                     actions=[
                         nav2_group,
                         nav2_startup_fallback,

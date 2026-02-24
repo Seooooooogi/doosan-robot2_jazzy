@@ -24,6 +24,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gripper', default_value='none', description='GRIPPER (none|robotiq_2f85)'),
         DeclareLaunchArgument('gui', default_value='true', description='Start RViz2'),
         DeclareLaunchArgument('use_nav2', default_value='true', description='Start Nav2 navigation stack'),
+        DeclareLaunchArgument('nav2_start_delay', default_value='3.0', description='Delay (sec) before starting Nav2 to wait for odom->base_link TF'),
         DeclareLaunchArgument('use_map', default_value='false', description='Use map_server + AMCL localization'),
         DeclareLaunchArgument('enable_nav2_fallback', default_value='false', description='Call lifecycle_manager startup fallback'),
         DeclareLaunchArgument('map', default_value='', description='Map yaml for map mode (use_map:=true)'),
@@ -151,6 +152,10 @@ def generate_launch_description():
             nav2_launch,
         ],
     )
+    delayed_nav2_group = TimerAction(
+        period=LaunchConfiguration('nav2_start_delay'),
+        actions=[nav2_group],
+    )
 
     nav2_startup_fallback = TimerAction(
         period=8.0,
@@ -173,4 +178,4 @@ def generate_launch_description():
         ])),
     )
 
-    return LaunchDescription(args + [start_launch, static_world_to_odom, static_map_to_odom, static_world_to_map, nav2_group, nav2_startup_fallback])
+    return LaunchDescription(args + [start_launch, static_world_to_odom, static_map_to_odom, static_world_to_map, delayed_nav2_group, nav2_startup_fallback])

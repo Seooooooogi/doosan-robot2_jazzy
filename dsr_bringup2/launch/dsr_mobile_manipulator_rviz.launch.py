@@ -32,6 +32,7 @@ def generate_launch_description():
         DeclareLaunchArgument('remap_tf', default_value='false', description='REMAP TF'),
         DeclareLaunchArgument('use_joint_state_publisher', default_value='false', description='Publish joint_states for visualization'),
         DeclareLaunchArgument('use_nav2', default_value='true', description='Start Nav2 navigation stack'),
+        DeclareLaunchArgument('nav2_start_delay', default_value='3.0', description='Delay (sec) before starting Nav2 to wait for odom->base_link TF'),
         DeclareLaunchArgument('use_map', default_value='false', description='Use map_server + AMCL localization'),
         DeclareLaunchArgument('enable_nav2_fallback', default_value='false', description='Call lifecycle_manager startup fallback'),
         DeclareLaunchArgument('map', default_value='', description='Map yaml for map mode (use_map:=true)'),
@@ -350,6 +351,10 @@ def generate_launch_description():
             nav2_launch,
         ],
     )
+    delayed_nav2_group = TimerAction(
+        period=LaunchConfiguration('nav2_start_delay'),
+        actions=[nav2_group],
+    )
 
     nav2_startup_fallback = TimerAction(
         period=8.0,
@@ -384,6 +389,6 @@ def generate_launch_description():
         static_world_to_odom,
         static_map_to_odom,
         static_world_to_map,
-        nav2_group,
+        delayed_nav2_group,
         nav2_startup_fallback,
     ])
