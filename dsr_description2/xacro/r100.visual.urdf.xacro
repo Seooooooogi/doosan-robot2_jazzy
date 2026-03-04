@@ -98,6 +98,12 @@
         </geometry>
         <material name="r100_clearpath_yellow" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 ${math.pi}" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/side-cover.stl"/>
+        </geometry>
+      </collision>
     </link>
     <link name="right_side_cover_link">
       <visual>
@@ -107,6 +113,12 @@
         </geometry>
         <material name="r100_clearpath_yellow" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/side-cover.stl"/>
+        </geometry>
+      </collision>
     </link>
 
     <joint name="front_cover_link_joint" type="fixed">
@@ -123,6 +135,12 @@
         </geometry>
         <material name="r100_clearpath_black" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/end-cover.stl" />
+        </geometry>
+      </collision>
     </link>
 
     <joint name="rear_cover_link_joint" type="fixed">
@@ -139,6 +157,12 @@
         </geometry>
         <material name="r100_clearpath_black" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 ${math.pi}" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/end-cover.stl" />
+        </geometry>
+      </collision>
     </link>
 
     <!-- Ligths -->
@@ -161,6 +185,12 @@
         </geometry>
         <material name="r100_clearpath_white" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/lights.stl" />
+        </geometry>
+      </collision>
     </link>
     <link name="rear_lights_link">
       <visual>
@@ -170,6 +200,12 @@
         </geometry>
         <material name="r100_clearpath_red" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 ${math.pi}" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/lights.stl" />
+        </geometry>
+      </collision>
     </link>
 
     <!-- Axle -->
@@ -187,6 +223,12 @@
         </geometry>
         <material name="r100_clearpath_black" />
       </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 ${math.pi/2} 0" />
+        <geometry>
+          <mesh filename="package://dsr_description2/meshes/r100/axle.stl" />
+        </geometry>
+      </collision>
     </link>
 
     <!-- Riser -->

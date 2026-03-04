@@ -1,13 +1,13 @@
 initial_positions:
-  arm_joint_1: 3.14159
-  arm_joint_2: 0.0
-  arm_joint_3: 0.0
-  arm_joint_4: 0.0
-  arm_joint_5: 0.0
-  arm_joint_6: 0.0
-  arm2_joint_1: 0.0
-  arm2_joint_2: 0.0
-  arm2_joint_3: 0.0
-  arm2_joint_4: 0.0
-  arm2_joint_5: 0.0
-  arm2_joint_6: 0.0
+  left_joint_1: 3.14159
+  left_joint_2: 0.0
+  left_joint_3: 0.0
+  left_joint_4: 0.0
+  left_joint_5: 0.0
+  left_joint_6: 0.0
+  right_joint_1: 0.0
+  right_joint_2: 0.0
+  right_joint_3: 0.0
+  right_joint_4: 0.0
+  right_joint_5: 0.0
+  right_joint_6: 0.0

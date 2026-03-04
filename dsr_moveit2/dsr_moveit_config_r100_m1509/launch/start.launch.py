@@ -46,11 +46,43 @@ def generate_robot_description_action(context, *args, **kwargs):
     mode = LaunchConfiguration('mode').perform(context)
     update_rate = read_update_rate() # get update_rate from yaml
 
-    # Parse URDF to extract active and passive joints
-    urdf_xml, active_joints, passive_joints = parse_joints_from_urdf(model, color, name, host, rt_host, port, mode, update_rate)
-    print(f"[DEBUG] model={model}, color={color}, name={name}, host={host}, rt_host={rt_host}, port={port}, mode={mode}, update_rate={update_rate}")
-    print(f"[DEBUG] active_joints={active_joints}")
-    print(f"[DEBUG] passive_joints={passive_joints}")
+    # Use package wrapper URDF so whole-body base joints (base_x/base_y/base_yaw) are included.
+    if model == "r100_m1509":
+        urdf_xml = Command([
+            FindExecutable(name="xacro"),
+            " ",
+            PathJoinSubstitution([
+                FindPackageShare("dsr_moveit_config_r100_m1509"),
+                "config",
+                "r100_m1509.urdf.xacro"
+            ]),
+            " ",
+            "color:=", color,
+            " ",
+            "arm_prefix:=", "arm_",
+            " ",
+            "host:=", host,
+            " ",
+            "port:=", port,
+            " ",
+            "rt_host:=", rt_host,
+            " ",
+            "mode:=", mode,
+            " ",
+            "model:=", "m1509",
+            " ",
+            "update_rate:=", str(update_rate),
+        ])
+        active_joints, passive_joints = [], []
+        print(f"[DEBUG] model={model}, color={color}, name={name}, host={host}, rt_host={rt_host}, port={port}, mode={mode}, update_rate={update_rate}")
+        print(f"[DEBUG] active_joints={active_joints}")
+        print(f"[DEBUG] passive_joints={passive_joints}")
+    else:
+        # Parse URDF to extract active and passive joints
+        urdf_xml, active_joints, passive_joints = parse_joints_from_urdf(model, color, name, host, rt_host, port, mode, update_rate)
+        print(f"[DEBUG] model={model}, color={color}, name={name}, host={host}, rt_host={rt_host}, port={port}, mode={mode}, update_rate={update_rate}")
+        print(f"[DEBUG] active_joints={active_joints}")
+        print(f"[DEBUG] passive_joints={passive_joints}")
 
     # Decide controller YAML
     # For r100_m1509, use the local ros2_controllers.yaml (no dsr_controller2)
@@ -95,6 +127,10 @@ def rviz_and_move_group_fn(context):
     model_value = LaunchConfiguration('model').perform(context)
     ns_value = LaunchConfiguration('name').perform(context)
     gui = LaunchConfiguration('gui').perform(context).lower() == 'true'
+    if model_value == "r100_m1509":
+        joint_states_topic = f"/{ns_value}/joint_states_whole" if ns_value else "/joint_states_whole"
+    else:
+        joint_states_topic = f"/{ns_value}/joint_states" if ns_value else "/joint_states"
 
     package_name = f"dsr_moveit_config_{model_value}"
     package_path = FindPackageShare(package_name).perform(context)
@@ -102,7 +138,7 @@ def rviz_and_move_group_fn(context):
     print("Package Path:", package_path)
 
     # 
-    pipelines = ["ompl", "chomp"]
+    pipelines = ["ompl"]
 
     moveit_config = (
         MoveItConfigsBuilder(model_value, "robot_description", package_name)
@@ -119,8 +155,15 @@ def rviz_and_move_group_fn(context):
     move_group_params = [
         moveit_config.to_dict(),  # robot_description & robot_description_semantic from MoveitConfigbuilder
         {"robot_description": ParameterValue(LaunchConfiguration('robot_description'), value_type=str)},
-        {"publish_robot_description": True},
-        {"publish_robot_description_semantic": True},
+        {"publish_robot_description": False},
+        {"publish_robot_description_semantic": False},
+        {"planning_scene_monitor_options": {"joint_state_topic": joint_states_topic}},
+        {"joint_state_topic": joint_states_topic},
+        {"publish_planning_scene": True},
+        {"publish_geometry_updates": True},
+        {"publish_state_updates": True},
+        {"publish_transforms_updates": True},
+        {"publish_planning_scene_frequency": 30.0},
     ]
     
     rviz_params = [
@@ -137,6 +180,10 @@ def rviz_and_move_group_fn(context):
         namespace=ns_value,
         output="screen",
         parameters=move_group_params,
+        remappings=[
+            ("/joint_states", joint_states_topic),
+            ("joint_states", joint_states_topic),
+        ],
     )
 
     rviz_base = os.path.join(get_package_share_directory(package_name), "launch")
@@ -204,6 +251,53 @@ def gripper_spawner_fn(context):
         output="screen",
     )]
 
+def rviz_refresh_helper_fn(context):
+    enabled = LaunchConfiguration('enable_rviz_refresh').perform(context).lower() in ['true', '1']
+    if not enabled:
+        return []
+
+    ns_value = LaunchConfiguration('name').perform(context)
+    if ns_value:
+        status_topic = f"/{ns_value}/move_action/_action/status"
+        planning_scene_topic = f"/{ns_value}/planning_scene"
+        monitored_scene_topic = f"/{ns_value}/monitored_planning_scene"
+        clear_octomap_service = f"/{ns_value}/clear_octomap"
+    else:
+        status_topic = "/move_action/_action/status"
+        planning_scene_topic = "/planning_scene"
+        monitored_scene_topic = "/monitored_planning_scene"
+        clear_octomap_service = "/clear_octomap"
+
+    cmd = (
+        "set +e; "
+        "trap 'exit 0' INT TERM; "
+        f"STATUS_TOPIC='{status_topic}'; "
+        f"SCENE_TOPIC='{planning_scene_topic}'; "
+        f"MON_SCENE_TOPIC='{monitored_scene_topic}'; "
+        f"CLEAR_OCTOMAP_SRV='{clear_octomap_service}'; "
+        "LOG_FILE=/tmp/wb_refresh.log; "
+        "echo \"[WB][REFRESH] helper started (status_topic=$STATUS_TOPIC)\" | tee -a \"$LOG_FILE\"; "
+        "last_hit=0; "
+        "while true; do "
+        "hit=$(ros2 topic echo --once \"$STATUS_TOPIC\" 2>/dev/null | grep -c \"status: 4\"); "
+        "if [ \"$hit\" -gt 0 ] && [ \"$last_hit\" -eq 0 ]; then "
+        "echo \"[WB][REFRESH] execute success detected -> refresh scene\" | tee -a \"$LOG_FILE\"; "
+        "ros2 topic pub --once \"$SCENE_TOPIC\" moveit_msgs/msg/PlanningScene \"{is_diff: true}\" >/dev/null 2>&1 || true; "
+        "ros2 topic pub --once \"$MON_SCENE_TOPIC\" moveit_msgs/msg/PlanningScene \"{is_diff: true}\" >/dev/null 2>&1 || true; "
+        "ros2 service call \"$CLEAR_OCTOMAP_SRV\" std_srvs/srv/Empty \"{}\" >/dev/null 2>&1 || true; "
+        "last_hit=1; "
+        "elif [ \"$hit\" -eq 0 ]; then "
+        "last_hit=0; "
+        "fi; "
+        "sleep 0.5; "
+        "done"
+    )
+
+    return [
+        LogInfo(msg=f">> [WB][REFRESH] helper watching: {status_topic}"),
+        ExecuteProcess(cmd=["bash", "-lc", cmd], output="screen"),
+    ]
+
 def generate_launch_description():
     ARGUMENTS = [
         DeclareLaunchArgument('name',  default_value='', description='NAME_SPACE'),
@@ -217,6 +311,8 @@ def generate_launch_description():
         DeclareLaunchArgument('rt_host', default_value='192.168.137.50', description='ROBOT_RT_IP'),
         DeclareLaunchArgument('dynamic_yaml', default_value='true', description='Use dynamic controller.yaml'),
         DeclareLaunchArgument('gripper', default_value='none', description='GRIPPER (none|robotiq_2f85)'),
+        DeclareLaunchArgument('enable_whole_body_controller', default_value='true', description='Spawn whole_body_controller scaffold plugin'),
+        DeclareLaunchArgument('enable_rviz_refresh', default_value='true', description='Auto-refresh planning scene after execute (RViz whole-body UI refresh)'),
     ]
 
     # Build robot_description and select controller YAML
@@ -244,8 +340,12 @@ def generate_launch_description():
     )
 
     joint_states_remap = PythonExpression([
-        "'/' + '", LaunchConfiguration('name'), "' + '/joint_states' if '",
-        LaunchConfiguration('name'), "' != '' else '/joint_states'"
+        "('/' + '", LaunchConfiguration('name'), "' + '/joint_states_whole') if ('",
+        LaunchConfiguration('model'), "' == 'r100_m1509' and '",
+        LaunchConfiguration('name'), "' != '') else ('/joint_states_whole' if '",
+        LaunchConfiguration('model'), "' == 'r100_m1509' else ('/' + '",
+        LaunchConfiguration('name'), "' + '/joint_states' if '",
+        LaunchConfiguration('name'), "' != '' else '/joint_states'))"
     ])
 
     # Run robot_state_publisher
@@ -269,6 +369,14 @@ def generate_launch_description():
     control_node = OpaqueFunction(function=control_node_fn)
 
     is_r100_m1509 = PythonExpression(["'", LaunchConfiguration('model'), "' == 'r100_m1509'"])
+    is_r100_m1509_and_whole_enabled = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509' and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() in ['true','1']"
+    ])
+    is_r100_m1509_and_whole_disabled = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509' and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() not in ['true','1']"
+    ])
     controller_manager_path = PythonExpression([
         "'/' + '", LaunchConfiguration('name'), "' + '/controller_manager' if '",
         LaunchConfiguration('name'), "' != '' else '/controller_manager'"
@@ -361,8 +469,21 @@ def generate_launch_description():
         ],
     )
 
+    r100_whole_body_controller_spawner = Node(
+        package="controller_manager",
+        namespace=LaunchConfiguration('name'),
+        executable="spawner",
+        arguments=[
+            "whole_body_controller",
+            "-c", controller_manager_path,
+            "--activate",
+            "--controller-manager-timeout", "120"
+        ],
+    )
+
     # MoveGroup + (optional) RViz
     rviz_and_move_group = OpaqueFunction(function=rviz_and_move_group_fn)
+    rviz_refresh_helper = OpaqueFunction(function=rviz_refresh_helper_fn)
 
     # A) Once joint_state_broadcaster is active, spawn dsr_controller2 (arm controller).
     delay_robot_controller_after_joint_state = RegisterEventHandler(
@@ -423,6 +544,22 @@ def generate_launch_description():
         condition=IfCondition(is_r100_m1509),
     )
 
+    delay_whole_body_controller_after_diff_drive = RegisterEventHandler(
+        OnProcessExit(
+            target_action=r100_diff_drive_controller_spawner,
+            on_exit=[
+                TimerAction(
+                    period=0.3,
+                    actions=[
+                        LogInfo(msg=">> [WB] diff_drive_controller active. Starting whole_body_controller scaffold..."),
+                        r100_whole_body_controller_spawner,
+                    ],
+                )
+            ],
+        ),
+        condition=IfCondition(is_r100_m1509_and_whole_enabled),
+    )
+
     # D) After dsr_moveit_controller is active, start MoveGroup (and RViz if gui=true).
     delay_rviz_after_moveit_controller = RegisterEventHandler(
         OnProcessExit(
@@ -443,7 +580,18 @@ def generate_launch_description():
                 rviz_and_move_group
             ],
         ),
-        condition=IfCondition(is_r100_m1509),
+        condition=IfCondition(is_r100_m1509_and_whole_disabled),
+    )
+
+    delay_rviz_after_whole_body = RegisterEventHandler(
+        OnProcessExit(
+            target_action=r100_whole_body_controller_spawner,
+            on_exit=[
+                LogInfo(msg=">> [WB] whole_body_controller active. Launching MoveGroup (+ RViz if gui=true)..."),
+                rviz_and_move_group
+            ],
+        ),
+        condition=IfCondition(is_r100_m1509_and_whole_enabled),
     )
 
     nodes = [
@@ -458,8 +606,11 @@ def generate_launch_description():
         delay_dsr_moveit_controller_after_robot_controller,
         delay_dsr_moveit_controller_after_joint_state,
         delayed_r100_spawners,
+        delay_whole_body_controller_after_diff_drive,
         delay_rviz_after_moveit_controller,
         delay_rviz_after_r100_moveit_controller,
+        delay_rviz_after_whole_body,
+        rviz_refresh_helper,
     ]
 
     return LaunchDescription(ARGUMENTS + nodes)

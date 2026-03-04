@@ -63,9 +63,9 @@ def generate_robot_description_action(context, *args, **kwargs):
             " ",
             "color:=", color,
             " ",
-            "arm_prefix:=", "arm_",
+            "arm_prefix:=", "left_",
             " ",
-            "arm2_prefix:=", "arm2_",
+            "arm2_prefix:=", "right_",
             " ",
             "enable_ros2_control:=", "true",
             " ",
@@ -147,6 +147,10 @@ def rviz_and_move_group_fn(context):
     model_value = LaunchConfiguration('model').perform(context)
     ns_value = LaunchConfiguration('name').perform(context)
     gui = LaunchConfiguration('gui').perform(context).lower() == 'true'
+    if model_value == "r100_m1509_dual":
+        joint_states_topic = f"/{ns_value}/joint_states_whole" if ns_value else "/joint_states_whole"
+    else:
+        joint_states_topic = f"/{ns_value}/joint_states" if ns_value else "/joint_states"
 
     package_name = f"dsr_moveit_config_{model_value}"
     package_path = FindPackageShare(package_name).perform(context)
@@ -154,14 +158,14 @@ def rviz_and_move_group_fn(context):
     print("Package Path:", package_path)
 
     # 
-    pipelines = ["ompl", "chomp"]
+    # Keep pipeline deterministic for whole-body UI interactions.
 
     moveit_config = (
         MoveItConfigsBuilder(model_value, "robot_description", package_name)
         .robot_description(file_path=f"config/{model_value}.urdf.xacro")
         .robot_description_semantic(file_path="config/dsr.srdf.xacro", mappings={'gripper': LaunchConfiguration('gripper')})
         .trajectory_execution(file_path="config/moveit_controllers.yaml")
-        .planning_pipelines(pipelines=pipelines,      # List of planning pipelines to load (each loaded from config/<name>_planning.yaml)
+        .planning_pipelines(pipelines=["ompl"],      # List of planning pipelines to load (each loaded from config/<name>_planning.yaml)
                             default_planning_pipeline="ompl", # Name of the default planning pipeline (used if none is explicitly selected)
                             load_all= False                   # If pipelines is None: True loads all from config/default packages; False loads only from config package
                             )
@@ -173,6 +177,13 @@ def rviz_and_move_group_fn(context):
         {"robot_description": ParameterValue(LaunchConfiguration('robot_description'), value_type=str)},
         {"publish_robot_description": True},
         {"publish_robot_description_semantic": True},
+        {"planning_scene_monitor_options": {"joint_state_topic": joint_states_topic}},
+        {"joint_state_topic": joint_states_topic},
+        {"publish_planning_scene": True},
+        {"publish_geometry_updates": True},
+        {"publish_state_updates": True},
+        {"publish_transforms_updates": True},
+        {"publish_planning_scene_frequency": 30.0},
     ]
     
     rviz_params = [
@@ -189,6 +200,10 @@ def rviz_and_move_group_fn(context):
         namespace=ns_value,
         output="screen",
         parameters=move_group_params,
+        remappings=[
+            ("/joint_states", joint_states_topic),
+            ("joint_states", joint_states_topic),
+        ],
     )
 
     rviz_base = os.path.join(get_package_share_directory(package_name), "launch")
@@ -198,7 +213,7 @@ def rviz_and_move_group_fn(context):
         executable="rviz2",
         name="rviz2_moveit",
         output="log",
-        arguments=["-d", rviz_full_config, "--ros-args", "--log-level", "warn"],
+        arguments=["-d", rviz_full_config, "--ros-args", "--log-level", "fatal"],
         parameters=rviz_params,
         remappings=[
             ("goal_pose", "/goal_pose"),
@@ -207,12 +222,15 @@ def rviz_and_move_group_fn(context):
     )
     actions = [run_move_group_node]
     if gui:
-        actions.append(rviz_node)
+        # Delay RViz startup so first rendered pose reflects settled joint states.
+        actions.append(TimerAction(period=1.0, actions=[rviz_node]))
     return actions
 
 # sets up the parameters for the controller manager node, if 'gripper' argument is setted, it additionally loads the 'gripper_controller.yaml' file
 def control_node_fn(context):
     model_value = LaunchConfiguration('model').perform(context)
+    ns_value = LaunchConfiguration('name').perform(context)
+    cm_logger = f"{ns_value}.controller_manager" if ns_value else "controller_manager"
     if model_value == "r100_m1509_dual":
         controller_yaml = os.path.join(
             get_package_share_directory("dsr_moveit_config_r100_m1509_dual"),
@@ -235,6 +253,11 @@ def control_node_fn(context):
         executable="ros2_control_node",
         namespace=LaunchConfiguration('name'),
         parameters=params,
+        arguments=[
+            "--ros-args",
+            "--log-level", "dsr_controller2:=warn",
+            "--log-level", f"{cm_logger}:=error",
+        ],
         output="both",
     )
     return [node]
@@ -254,6 +277,53 @@ def gripper_spawner_fn(context):
         output="screen",
     )]
 
+
+def rviz_refresh_helper_fn(context):
+    model_value = LaunchConfiguration('model').perform(context)
+    enabled = LaunchConfiguration('enable_rviz_refresh').perform(context).lower() in ['true', '1']
+    if not enabled:
+        return []
+
+    ns_value = LaunchConfiguration('name').perform(context)
+    if ns_value:
+        status_topic = f"/{ns_value}/move_action/_action/status"
+        planning_scene_topic = f"/{ns_value}/planning_scene"
+        monitored_scene_topic = f"/{ns_value}/monitored_planning_scene"
+        clear_octomap_service = f"/{ns_value}/clear_octomap"
+    else:
+        status_topic = "/move_action/_action/status"
+        planning_scene_topic = "/planning_scene"
+        monitored_scene_topic = "/monitored_planning_scene"
+        clear_octomap_service = "/clear_octomap"
+
+    cmd = (
+        "set +e; "
+        f"STATUS_TOPIC='{status_topic}'; "
+        f"SCENE_TOPIC='{planning_scene_topic}'; "
+        f"MON_SCENE_TOPIC='{monitored_scene_topic}'; "
+        f"CLEAR_OCTOMAP_SRV='{clear_octomap_service}'; "
+        "LOG_FILE=/tmp/wb_refresh.log; "
+        "echo \"[WB][REFRESH] helper started (status_topic=$STATUS_TOPIC)\" | tee -a \"$LOG_FILE\"; "
+        "last_hit=0; "
+        "while true; do "
+        "hit=$(ros2 topic echo --once \"$STATUS_TOPIC\" 2>/dev/null | grep -c \"status: 4\"); "
+        "if [ \"$hit\" -gt 0 ] && [ \"$last_hit\" -eq 0 ]; then "
+        "echo \"[WB][REFRESH] execute success detected -> refresh scene\" | tee -a \"$LOG_FILE\"; "
+        "ros2 topic pub --once \"$SCENE_TOPIC\" moveit_msgs/msg/PlanningScene \"{is_diff: true}\" >/dev/null 2>&1 || true; "
+        "ros2 topic pub --once \"$MON_SCENE_TOPIC\" moveit_msgs/msg/PlanningScene \"{is_diff: true}\" >/dev/null 2>&1 || true; "
+        "ros2 service call \"$CLEAR_OCTOMAP_SRV\" std_srvs/srv/Empty \"{}\" >/dev/null 2>&1 || true; "
+        "last_hit=1; "
+        "elif [ \"$hit\" -eq 0 ]; then "
+        "last_hit=0; "
+        "fi; "
+        "sleep 0.5; "
+        "done"
+    )
+    return [
+        LogInfo(msg=f">> [WB][REFRESH] helper watching: {status_topic}"),
+        ExecuteProcess(cmd=["bash", "-lc", cmd], output="screen"),
+    ]
+
 def generate_launch_description():
     ARGUMENTS = [
         DeclareLaunchArgument('name',  default_value='r100_m1509_dual', description='NAME_SPACE'),
@@ -272,6 +342,8 @@ def generate_launch_description():
         DeclareLaunchArgument('dynamic_yaml', default_value='true', description='Use dynamic controller.yaml'),
         DeclareLaunchArgument('gripper', default_value='none', description='GRIPPER (none|robotiq_2f85)'),
         DeclareLaunchArgument('left_init_on_start', default_value='true', description='Move left arm J1 to 180deg once at startup (dual only)'),
+        DeclareLaunchArgument('enable_whole_body_controller', default_value='true', description='Spawn whole_body_controller scaffold plugin'),
+        DeclareLaunchArgument('enable_rviz_refresh', default_value='true', description='Auto-refresh planning scene after execute (RViz whole-body UI refresh)'),
     ]
 
     # Build robot_description and select controller YAML
@@ -322,8 +394,12 @@ def generate_launch_description():
     )
 
     joint_states_remap = PythonExpression([
-        "'/' + '", LaunchConfiguration('name'), "' + '/joint_states' if '",
-        LaunchConfiguration('name'), "' != '' else '/joint_states'"
+        "('/' + '", LaunchConfiguration('name'), "' + '/joint_states_whole') if ('",
+        LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('name'), "' != '') else ('/joint_states_whole' if '",
+        LaunchConfiguration('model'), "' == 'r100_m1509_dual' else ('/' + '",
+        LaunchConfiguration('name'), "' + '/joint_states' if '",
+        LaunchConfiguration('name'), "' != '' else '/joint_states'))"
     ])
 
     # Run robot_state_publisher
@@ -346,7 +422,49 @@ def generate_launch_description():
     # Run ros2_control_node(controller_manager)
     control_node = OpaqueFunction(function=control_node_fn)
 
+    is_r100_m1509 = PythonExpression(["'", LaunchConfiguration('model'), "' == 'r100_m1509'"])
     is_r100_m1509_dual = PythonExpression(["'", LaunchConfiguration('model'), "' == 'r100_m1509_dual'"])
+    left_init_enabled = PythonExpression([
+        "'", LaunchConfiguration('left_init_on_start'), "'.lower() in ['true','1']"
+    ])
+    left_init_disabled = PythonExpression([
+        "'", LaunchConfiguration('left_init_on_start'), "'.lower() not in ['true','1']"
+    ])
+    whole_body_enabled = PythonExpression([
+        "'", LaunchConfiguration('enable_whole_body_controller'), "'.lower() in ['true','1']"
+    ])
+    whole_body_disabled = PythonExpression([
+        "'", LaunchConfiguration('enable_whole_body_controller'), "'.lower() not in ['true','1']"
+    ])
+
+    is_dual_and_init_enabled = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('left_init_on_start'), "'.lower() in ['true','1']"
+    ])
+    is_dual_and_whole_enabled = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() in ['true','1']"
+    ])
+    is_dual_and_init_and_whole = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('left_init_on_start'), "'.lower() in ['true','1'] and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() in ['true','1']"
+    ])
+    is_dual_and_init_and_no_whole = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('left_init_on_start'), "'.lower() in ['true','1'] and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() not in ['true','1']"
+    ])
+    is_dual_and_no_init_and_whole = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('left_init_on_start'), "'.lower() not in ['true','1'] and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() in ['true','1']"
+    ])
+    is_dual_and_no_init_and_no_whole = PythonExpression([
+        "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
+        LaunchConfiguration('left_init_on_start'), "'.lower() not in ['true','1'] and '",
+        LaunchConfiguration('enable_whole_body_controller'), "'.lower() not in ['true','1']"
+    ])
     controller_manager_path = PythonExpression([
         "'/' + '", LaunchConfiguration('name'), "' + '/controller_manager' if '",
         LaunchConfiguration('name'), "' != '' else '/controller_manager'"
@@ -434,12 +552,27 @@ def generate_launch_description():
         arguments=[
             "diff_drive_controller",
             "-c", controller_manager_path,
+            "--activate",
+            "--controller-manager-timeout", "120"
+        ],
+    )
+
+    r100_whole_body_controller_spawner = Node(
+        package="controller_manager",
+        namespace=LaunchConfiguration('name'),
+        executable="spawner",
+        arguments=[
+            "whole_body_controller",
+            "-c", controller_manager_path,
+            "--activate",
             "--controller-manager-timeout", "120"
         ],
     )
 
     # MoveGroup + (optional) RViz
     rviz_and_move_group = OpaqueFunction(function=rviz_and_move_group_fn)
+
+    rviz_refresh_helper = OpaqueFunction(function=rviz_refresh_helper_fn)
 
     # A) Once joint_state_broadcaster is active, spawn dsr_controller2 (arm controller).
     delay_robot_controller_after_joint_state = RegisterEventHandler(
@@ -485,17 +618,16 @@ def generate_launch_description():
                 dsr_moveit_controller_spawner,
             ],
         ),
-        condition=IfCondition(PythonExpression(["'", LaunchConfiguration('model'), "' == 'r100_m1509'"])),
+        condition=IfCondition(is_r100_m1509),
     )
 
     # For r100_m1509_dual: delay spawners to ensure controller_manager is up
     delayed_r100_spawners = TimerAction(
-        period=2.0,
+        period=1.0,
         actions=[
             r100_joint_state_broadcaster_spawner,
             r100_robot_controller_spawner,
             r100_dual_moveit_controller_spawner,
-            r100_diff_drive_controller_spawner,
         ],
         condition=IfCondition(is_r100_m1509_dual),
     )
@@ -503,29 +635,66 @@ def generate_launch_description():
     # For r100_m1509_dual: one-shot initial pose (left arm J1 = 180deg) before UI starts.
     left_init_motion_once = ExecuteProcess(
         cmd=[
-            "ros2", "service", "call",
-            PythonExpression(["'/' + '", LaunchConfiguration('name'), "' + '/left/motion/move_joint'"]),
-            "dsr_msgs2/srv/MoveJoint",
-            "{pos: [180.0, 0.0, 0.0, 0.0, 0.0, 0.0], vel: 30.0, acc: 60.0, time: 2.0, radius: 0.0, mode: 0, blend_type: 0, sync_type: 1}",
+            "ros2", "action", "send_goal",
+            "-t", "20",
+            PythonExpression(["'/' + '", LaunchConfiguration('name'), "' + '/dual_dsr_moveit_controller/follow_joint_trajectory'"]),
+            "control_msgs/action/FollowJointTrajectory",
+            "{trajectory: {joint_names: [left_joint_1, left_joint_2, left_joint_3, left_joint_4, left_joint_5, left_joint_6, right_joint_1, right_joint_2, right_joint_3, right_joint_4, right_joint_5, right_joint_6], points: [{positions: [3.14159, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], time_from_start: {sec: 6, nanosec: 0}}]}}",
         ],
         output="log",
     )
 
-    delay_left_init_motion_after_robot_controller = RegisterEventHandler(
+    delay_left_init_motion_after_whole_body = RegisterEventHandler(
         OnProcessExit(
-            target_action=r100_robot_controller_spawner,
+            target_action=r100_whole_body_controller_spawner,
             on_exit=[
                 TimerAction(
-                    period=1.0,
+                    period=0.2,
                     actions=[left_init_motion_once],
                 )
             ],
         ),
-        condition=IfCondition(PythonExpression([
-            "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
-            LaunchConfiguration('left_init_on_start'),
-            "'.lower() in ['true','1']"
-        ])),
+        condition=IfCondition(is_dual_and_init_and_whole),
+    )
+
+    delay_left_init_motion_after_dual_moveit = RegisterEventHandler(
+        OnProcessExit(
+            target_action=r100_robot_controller_spawner,
+            on_exit=[
+                TimerAction(
+                    period=0.2,
+                    actions=[left_init_motion_once],
+                )
+            ],
+        ),
+        condition=IfCondition(is_dual_and_init_and_no_whole),
+    )
+
+    delay_diff_drive_controller_after_dual_moveit = RegisterEventHandler(
+        OnProcessExit(
+            target_action=r100_dual_moveit_controller_spawner,
+            on_exit=[
+                LogInfo(msg=">> [WB] dual_dsr_moveit_controller active. Starting diff_drive_controller..."),
+                r100_diff_drive_controller_spawner,
+            ],
+        ),
+        condition=IfCondition(is_dual_and_whole_enabled),
+    )
+
+    delay_whole_body_controller_after_diff_drive = RegisterEventHandler(
+        OnProcessExit(
+            target_action=r100_diff_drive_controller_spawner,
+            on_exit=[
+                TimerAction(
+                    period=0.3,
+                    actions=[
+                        LogInfo(msg=">> [WB] diff_drive_controller active. Starting whole_body_controller scaffold..."),
+                        r100_whole_body_controller_spawner,
+                    ],
+                )
+            ],
+        ),
+        condition=IfCondition(is_dual_and_whole_enabled),
     )
 
     # D) After dsr_moveit_controller is active, start MoveGroup (and RViz if gui=true).
@@ -548,11 +717,18 @@ def generate_launch_description():
                 rviz_and_move_group
             ],
         ),
-        condition=IfCondition(PythonExpression([
-            "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
-            LaunchConfiguration('left_init_on_start'),
-            "'.lower() not in ['true','1']"
-        ])),
+        condition=IfCondition(is_dual_and_no_init_and_no_whole),
+    )
+
+    delay_rviz_after_whole_body_no_init = RegisterEventHandler(
+        OnProcessExit(
+            target_action=r100_whole_body_controller_spawner,
+            on_exit=[
+                LogInfo(msg=">> [WB] whole_body_controller active. Launching MoveGroup (+ RViz if gui=true)..."),
+                rviz_and_move_group
+            ],
+        ),
+        condition=IfCondition(is_dual_and_no_init_and_whole),
     )
 
     # For r100_m1509_dual + init hook: start MoveGroup + RViz after initial left-arm move completes
@@ -569,11 +745,7 @@ def generate_launch_description():
                 )
             ],
         ),
-        condition=IfCondition(PythonExpression([
-            "'", LaunchConfiguration('model'), "' == 'r100_m1509_dual' and '",
-            LaunchConfiguration('left_init_on_start'),
-            "'.lower() in ['true','1']"
-        ])),
+        condition=IfCondition(is_dual_and_init_enabled),
     )
 
     nodes = [
@@ -589,10 +761,15 @@ def generate_launch_description():
         delay_dsr_moveit_controller_after_robot_controller,
         delay_dsr_moveit_controller_after_joint_state,
         delayed_r100_spawners,
-        delay_left_init_motion_after_robot_controller,
+        delay_left_init_motion_after_whole_body,
+        delay_left_init_motion_after_dual_moveit,
+        delay_diff_drive_controller_after_dual_moveit,
+        delay_whole_body_controller_after_diff_drive,
         delay_rviz_after_moveit_controller,
         delay_rviz_after_r100_moveit_controller,
+        delay_rviz_after_whole_body_no_init,
         delay_rviz_after_left_init_motion,
+        rviz_refresh_helper,
     ]
 
     return LaunchDescription(ARGUMENTS + nodes)

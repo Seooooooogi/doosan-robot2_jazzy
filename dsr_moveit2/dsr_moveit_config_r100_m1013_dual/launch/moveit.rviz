@@ -73,32 +73,32 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        arm_link_1:
+        left_link_1:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        arm_link_2:
+        left_link_2:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        arm_link_3:
+        left_link_3:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        arm_link_4:
+        left_link_4:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        arm_link_5:
+        left_link_5:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        arm_link_6:
+        left_link_6:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -145,32 +145,32 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_1:
+          left_link_1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_2:
+          left_link_2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_3:
+          left_link_3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_4:
+          left_link_4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_5:
+          left_link_5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_6:
+          left_link_6:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -189,6 +189,7 @@ Visualization Manager:
       MoveIt_Allow_Sensor_Positioning: false
       MoveIt_Planning_Attempts: 10
       MoveIt_Planning_Time: 5
+      Planning Pipeline: ompl
       MoveIt_Use_Cartesian_Path: false
       MoveIt_Use_Constraint_Aware_IK: false
       MoveIt_Workspace:
@@ -219,32 +220,32 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_1:
+          left_link_1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_2:
+          left_link_2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_3:
+          left_link_3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_4:
+          left_link_4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_5:
+          left_link_5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_6:
+          left_link_6:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -303,32 +304,32 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_1:
+          left_link_1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_2:
+          left_link_2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_3:
+          left_link_3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_4:
+          left_link_4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_5:
+          left_link_5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          arm_link_6:
+          left_link_6:
             Alpha: 1
             Show Axes: false
             Show Trail: false
