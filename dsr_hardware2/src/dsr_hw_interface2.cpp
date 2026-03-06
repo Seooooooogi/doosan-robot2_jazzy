@@ -195,7 +195,9 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
     // By making sure AUTHORITY and STANDBY_STATE.
     static bool get_control_access = false;
     static bool is_standby = false;
-    Drfl.set_on_monitoring_access_control([](const MONITORING_ACCESS_CONTROL access) {
+    get_control_access = false;
+    is_standby = false;
+    m_Drfl.set_on_monitoring_access_control([](const MONITORING_ACCESS_CONTROL access) {
         RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"AUTHORITY : %s", to_str(access).c_str());
         if(MONITORING_ACCESS_CONTROL_GRANT == access) {
             RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"INITIAL AUTHORITY GRANTED !!!");
@@ -207,7 +209,7 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
             is_standby = false; // previous standby state after losing authority is definitely useless.
         }
     });
-    Drfl.set_on_monitoring_state([](const ROBOT_STATE state) {
+    m_Drfl.set_on_monitoring_state([](const ROBOT_STATE state) {
         RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"ROBOT_STATE : %s", to_str(state).c_str());
         if(STATE_STANDBY == state) {
             RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"INITIAL STATE_STANDBY !!!");
@@ -250,7 +252,7 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
     //--- Get version -------------------------------------            
     SYSTEM_VERSION tSysVerion;
     memset(&tSysVerion, 0, sizeof(tSysVerion));
-    assert(Drfl.get_system_version(&tSysVerion));
+    assert(m_Drfl.get_system_version(&tSysVerion));
 
     //--- Get DRCF version & convert to integer  ----------            
     m_nVersionDRCF = 0; 
@@ -261,7 +263,7 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
     if(m_nVersionDRCF < 100000) m_nVersionDRCF += 100000; 
                  
     RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"    DRCF version = %s",tSysVerion._szController);
-    RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"    DRFL version = %s",Drfl.get_library_version());
+    RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"    DRFL version = %s",m_Drfl.get_library_version());
     RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"    m_nVersionDRCF = %d", m_nVersionDRCF);  //ex> M2.40 = 120400, M2.50 = 120500  
     RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"),"_______________________________________________\n");
 
@@ -274,7 +276,7 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
     }
 
     //--- Set Robot mode : MANUAL or AUTO
-    if(!Drfl.SetRobotMode(ROBOT_MODE_AUTONOMOUS)) {
+    if(!m_Drfl.SetRobotMode(ROBOT_MODE_AUTONOMOUS)) {
         RCLCPP_ERROR(rclcpp::get_logger("dsr_hw_interface2"), "ROBOT_MODE_AUTONOMOUS Setting Failure !!"); 
         return CallbackReturn::ERROR;
     }
@@ -290,7 +292,7 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
 
     // Basically, Controller automatically servo-off after elapse time (5 min)
     // Deactivate it.
-    Drfl.set_auto_servo_off(0, 5.0);
+    m_Drfl.set_auto_servo_off(0, 5.0);
 
     // Virtual controller doesn't support real time connection.
     if(mode_ != "virtual") {
@@ -305,20 +307,20 @@ CallbackReturn DRHWInterface::on_init(const hardware_interface::HardwareInfo & i
         const std::string version   = "v1.0";
         const float       period    = 0.001;
         const int         losscount = 4;
-        if (!Drfl.set_rt_control_output(version, period, losscount)) {
+        if (!m_Drfl.set_rt_control_output(version, period, losscount)) {
             RCLCPP_ERROR(rclcpp::get_logger("dsr_hw_interface2"), "Unable to connect RT control stream");
             return CallbackReturn::FAILURE;
         }
 
-        if (!Drfl.start_rt_control()) {
+        if (!m_Drfl.start_rt_control()) {
             RCLCPP_ERROR(rclcpp::get_logger("dsr_hw_interface2"), "Unable to start RT control");
             return CallbackReturn::FAILURE;
         }
 
         RCLCPP_INFO(rclcpp::get_logger("dsr_hw_interface2"), "Setting velocity and acceleration limits");
         float limit[6] = {70.0f,70.0f,70.0f,70.0f,70.0f,70.0f};
-        if (!Drfl.set_velj_rt(limit)) return CallbackReturn::ERROR;
-        if (!Drfl.set_accj_rt(limit)) return CallbackReturn::ERROR;
+        if (!m_Drfl.set_velj_rt(limit)) return CallbackReturn::ERROR;
+        if (!m_Drfl.set_accj_rt(limit)) return CallbackReturn::ERROR;
     }
 
     m_Drfl.set_safety_mode(SAFETY_MODE_AUTONOMOUS,SAFETY_MODE_EVENT_MOVE);
@@ -441,8 +443,8 @@ return_type DRHWInterface::write(const rclcpp::Time &, const rclcpp::Duration &d
 
     // Measure CPU loop duration for REAL servo timing
     auto now_cpu = std::chrono::steady_clock::now();
-    double real_loop_dt = std::chrono::duration<double>(now_cpu - last_tick).count();
-    last_tick = now_cpu;
+    double real_loop_dt = std::chrono::duration<double>(now_cpu - last_tick_).count();
+    last_tick_ = now_cpu;
 
     // dt provided by controller_manager
     const double dt_sec = dt.seconds();
@@ -498,7 +500,7 @@ return_type DRHWInterface::write(const rclcpp::Time &, const rclcpp::Duration &d
 
     if (positionCommandRunning(pre_joint_position_command_, joint_position_command_))
     {
-        if (idle)
+        if (idle_)
         {
             m_Drfl.set_safety_mode(SAFETY_MODE_AUTONOMOUS, SAFETY_MODE_EVENT_MOVE);
             idle_ = false;

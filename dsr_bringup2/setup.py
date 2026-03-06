@@ -1,7 +1,12 @@
 from setuptools import find_packages, setup
 from glob import glob
+import os
 
 package_name = 'dsr_bringup2'
+
+
+def list_files(pattern):
+    return [path for path in glob(pattern) if os.path.isfile(path)]
 
 setup(
     name=package_name,

@@ -659,7 +659,7 @@ def generate_launch_description():
 
     delay_left_init_motion_after_dual_moveit = RegisterEventHandler(
         OnProcessExit(
-            target_action=r100_robot_controller_spawner,
+            target_action=r100_dual_moveit_controller_spawner,
             on_exit=[
                 TimerAction(
                     period=0.2,
@@ -739,7 +739,6 @@ def generate_launch_description():
                 TimerAction(
                     period=0.5,
                     actions=[
-                        LogInfo(msg=">> [STEP 4 COMPLETED] left init motion done. Launching MoveGroup (+ RViz if gui=true)..."),
                         rviz_and_move_group
                     ],
                 )

@@ -455,7 +455,7 @@ def generate_launch_description():
 
     delay_left_init_motion_after_dual_controller = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=dual_robot_controller_spawner,
+            target_action=dual_moveit_controller_spawner,
             on_exit=[
                 TimerAction(period=1.0, actions=[left_init_motion_once]),
             ],
@@ -485,7 +485,7 @@ def generate_launch_description():
 
     delay_rviz_without_left_init_motion = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=dual_robot_controller_spawner,
+            target_action=dual_moveit_controller_spawner,
             on_exit=[
                 TimerAction(period=0.5, actions=[original_rviz_node, remapped_rviz_node]),
                 dual_robot_controller_spawner,
