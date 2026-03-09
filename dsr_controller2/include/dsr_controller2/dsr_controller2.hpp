@@ -577,6 +577,13 @@ public:
   rclcpp::Publisher<dsr_msgs2::msg::RobotDisconnection>::SharedPtr disconnect_pub_;
   rclcpp::Publisher<dsr_msgs2::msg::RobotError>::SharedPtr error_log_pub_;
 protected:
+  // Per-instance DRFL pointer (each controller connects to its own robot)
+  DRAFramework::CDRFLEx *Drfl = nullptr;
+
+  // Service name prefix (controller node name) for left/right distinction
+  // e.g., "left_dsr_controller2/" so services become /dsr01/left_dsr_controller2/motion/move_joint
+  std::string svc_prefix_;
+
   std::vector<std::string> joint_names_;
   std::vector<std::string> command_interface_types_;
   std::vector<std::string> state_interface_types_;

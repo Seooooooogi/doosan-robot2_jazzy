@@ -20,5 +20,11 @@
 		<material name="dr_blue">
 			<color rgba="0 0 0.15 1" />
 		</material>
+		<material name="grey">
+			<color rgba="0.5 0.5 0.5 1.0" />
+		</material>
+		<material name="Boxer_DarkGrey">
+			<color rgba="0.3 0.3 0.3 1.0" />
+		</material>
 	</xacro:macro>
 </robot>

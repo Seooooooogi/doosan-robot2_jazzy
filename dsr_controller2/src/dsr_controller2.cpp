@@ -40,8 +40,9 @@
 using config_type = controller_interface::interface_configuration_type;
 using namespace DRAFramework;
 
-extern void* get_drfl();
-CDRFLEx *Drfl = (CDRFLEx*)get_drfl();
+extern void* get_drfl(const char* robot_name);
+// Note: Drfl is now a per-instance member of RobotController (defined in header)
+// This allows each controller instance (left/right) to have its own DRFL connection
 
 DR_STATE g_stDrState;
 DR_ERROR    g_stDrError;
@@ -53,6 +54,7 @@ int g_nAnalogOutputModeCh2;
 
 
 dsr_controller2::RobotController *instance;
+CDRFLEx *g_callback_drfl = nullptr;
 
 const char* GetRobotStateString(int nState)
 {
@@ -88,6 +90,12 @@ RobotController::RobotController() : controller_interface::ControllerInterface()
 controller_interface::CallbackReturn RobotController::on_init()
 {
     instance = this;
+    Drfl = static_cast<CDRFLEx *>(get_drfl(nullptr));
+    g_callback_drfl = Drfl;
+    if (Drfl == nullptr) {
+        RCLCPP_ERROR(get_node()->get_logger(), "Failed to get DRFL instance");
+        return CallbackReturn::ERROR;
+    }
     m_model = g_model;
 
     use_rt_topic_pub_ = auto_declare<bool>(PARAM_USE_RT_TOPIC_PUB, false);
@@ -304,7 +312,11 @@ void check_dsr_model(std::array<float, NUM_JOINT>& target_joint){
 
 controller_interface::CallbackReturn RobotController::on_activate(const rclcpp_lifecycle::State &)
 {
-      
+  // Build service prefix from controller node name for left/right distinction
+  // e.g., "left_dsr_controller2" -> services at /dsr01/left_dsr_controller2/motion/move_joint
+  svc_prefix_ = std::string(get_node()->get_name()) + "/";
+  RCLCPP_INFO(get_node()->get_logger(), "Service prefix: %s", svc_prefix_.c_str());
+
 auto set_robot_mode_cb = [this](const std::shared_ptr<dsr_msgs2::srv::SetRobotMode::Request> req, std::shared_ptr<dsr_msgs2::srv::SetRobotMode::Response> res) -> void
 {
     RCLCPP_INFO(rclcpp::get_logger("dsr_controller2"),"set_robot_mode_cb() called and calling Drfl->set_robot_mode(%d)",req->robot_mode);
@@ -2374,180 +2386,180 @@ auto torque_rt_cb = [this](const std::shared_ptr<dsr_msgs2::msg::TorqueRtStream>
 
   cb_group_ = get_node()->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   // Subscription declarations
-  m_sub_alter_motion_stream           = get_node()->create_subscription<dsr_msgs2::msg::AlterMotionStream>("alter_motion_stream", 20, alter_cb);
-  m_sub_servoj_stream                 = get_node()->create_subscription<dsr_msgs2::msg::ServojStream>("servoj_stream", 20, servoj_cb);
-  m_sub_servol_stream                 = get_node()->create_subscription<dsr_msgs2::msg::ServolStream>("servol_stream", 20, servol_cb);
-  m_sub_speedj_stream                 = get_node()->create_subscription<dsr_msgs2::msg::SpeedjStream>("speedj_stream", 20, speedj_cb);
-  m_sub_speedl_stream                 = get_node()->create_subscription<dsr_msgs2::msg::SpeedlStream>("speedl_stream", 10, speedl_cb);
+  m_sub_alter_motion_stream           = get_node()->create_subscription<dsr_msgs2::msg::AlterMotionStream>(svc_prefix_ + "alter_motion_stream", 20, alter_cb);
+  m_sub_servoj_stream                 = get_node()->create_subscription<dsr_msgs2::msg::ServojStream>(svc_prefix_ + "servoj_stream", 20, servoj_cb);
+  m_sub_servol_stream                 = get_node()->create_subscription<dsr_msgs2::msg::ServolStream>(svc_prefix_ + "servol_stream", 20, servol_cb);
+  m_sub_speedj_stream                 = get_node()->create_subscription<dsr_msgs2::msg::SpeedjStream>(svc_prefix_ + "speedj_stream", 20, speedj_cb);
+  m_sub_speedl_stream                 = get_node()->create_subscription<dsr_msgs2::msg::SpeedlStream>(svc_prefix_ + "speedl_stream", 10, speedl_cb);
 
-  m_sub_servoj_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::ServojRtStream>("servoj_rt_stream", 20, servoj_rt_cb);
-  m_sub_servol_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::ServolRtStream>("servol_rt_stream", 20, servol_rt_cb);
-  m_sub_speedj_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::SpeedjRtStream>("speedj_rt_stream", 20, speedj_rt_cb);
-  m_sub_speedl_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::SpeedlRtStream>("speedl_rt_stream", 20, speedl_rt_cb);
-  m_sub_torque_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::TorqueRtStream>("torque_rt_stream", 20, torque_rt_cb);
+  m_sub_servoj_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::ServojRtStream>(svc_prefix_ + "servoj_rt_stream", 20, servoj_rt_cb);
+  m_sub_servol_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::ServolRtStream>(svc_prefix_ + "servol_rt_stream", 20, servol_rt_cb);
+  m_sub_speedj_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::SpeedjRtStream>(svc_prefix_ + "speedj_rt_stream", 20, speedj_rt_cb);
+  m_sub_speedl_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::SpeedlRtStream>(svc_prefix_ + "speedl_rt_stream", 20, speedl_rt_cb);
+  m_sub_torque_rt_stream              = get_node()->create_subscription<dsr_msgs2::msg::TorqueRtStream>(svc_prefix_ + "torque_rt_stream", 20, torque_rt_cb);
   
   
-  m_nh_srv_set_robot_mode             = get_node()->create_service<dsr_msgs2::srv::SetRobotMode>("system/set_robot_mode", set_robot_mode_cb);
-  m_nh_srv_get_robot_mode             = get_node()->create_service<dsr_msgs2::srv::GetRobotMode>("system/get_robot_mode", get_robot_mode_cb);     
-  m_nh_srv_set_robot_system           = get_node()->create_service<dsr_msgs2::srv::SetRobotSystem>("system/set_robot_system", set_robot_system_cb);         
-  m_nh_srv_get_robot_system           = get_node()->create_service<dsr_msgs2::srv::GetRobotSystem>("system/get_robot_system", get_robot_system_cb);         
-  m_nh_srv_get_robot_state            = get_node()->create_service<dsr_msgs2::srv::GetRobotState>("system/get_robot_state", get_robot_state_cb);        
-  m_nh_srv_set_robot_speed_mode       = get_node()->create_service<dsr_msgs2::srv::SetRobotSpeedMode>("system/set_robot_speed_mode", set_robot_speed_mode_cb);    
-  m_nh_srv_get_robot_speed_mode       = get_node()->create_service<dsr_msgs2::srv::GetRobotSpeedMode>("system/get_robot_speed_mode", get_robot_speed_mode_cb);       
-  m_nh_srv_get_current_pose           = get_node()->create_service<dsr_msgs2::srv::GetCurrentPose>("system/get_current_pose", get_current_pose_cb);   
-  m_nh_srv_set_safe_stop_reset_type   = get_node()->create_service<dsr_msgs2::srv::SetSafeStopResetType>("system/set_safe_stop_reset_type", set_safe_stop_reset_type_cb);           
-  m_nh_srv_get_last_alarm             = get_node()->create_service<dsr_msgs2::srv::GetLastAlarm>("system/get_last_alarm", get_last_alarm_cb);   
-  m_nh_srv_servo_off                  = get_node()->create_service<dsr_msgs2::srv::ServoOff>("system/servo_off", servo_off_cb);   
-  m_nh_srv_set_robot_control          = get_node()->create_service<dsr_msgs2::srv::SetRobotControl>("system/set_robot_control", set_robot_control_cb);
-  m_nh_srv_change_collision_sensitivity = get_node()->create_service<dsr_msgs2::srv::ChangeCollisionSensitivity>("system/change_collision_sensitivity", change_collision_sensitivity_cb);   
-  m_nh_srv_set_safety_mode          = get_node()->create_service<dsr_msgs2::srv::SetSafetyMode>("system/set_safety_mode", set_safety_mode_cb);
+  m_nh_srv_set_robot_mode             = get_node()->create_service<dsr_msgs2::srv::SetRobotMode>(svc_prefix_ + "system/set_robot_mode", set_robot_mode_cb);
+  m_nh_srv_get_robot_mode             = get_node()->create_service<dsr_msgs2::srv::GetRobotMode>(svc_prefix_ + "system/get_robot_mode", get_robot_mode_cb);     
+  m_nh_srv_set_robot_system           = get_node()->create_service<dsr_msgs2::srv::SetRobotSystem>(svc_prefix_ + "system/set_robot_system", set_robot_system_cb);         
+  m_nh_srv_get_robot_system           = get_node()->create_service<dsr_msgs2::srv::GetRobotSystem>(svc_prefix_ + "system/get_robot_system", get_robot_system_cb);         
+  m_nh_srv_get_robot_state            = get_node()->create_service<dsr_msgs2::srv::GetRobotState>(svc_prefix_ + "system/get_robot_state", get_robot_state_cb);        
+  m_nh_srv_set_robot_speed_mode       = get_node()->create_service<dsr_msgs2::srv::SetRobotSpeedMode>(svc_prefix_ + "system/set_robot_speed_mode", set_robot_speed_mode_cb);    
+  m_nh_srv_get_robot_speed_mode       = get_node()->create_service<dsr_msgs2::srv::GetRobotSpeedMode>(svc_prefix_ + "system/get_robot_speed_mode", get_robot_speed_mode_cb);       
+  m_nh_srv_get_current_pose           = get_node()->create_service<dsr_msgs2::srv::GetCurrentPose>(svc_prefix_ + "system/get_current_pose", get_current_pose_cb);   
+  m_nh_srv_set_safe_stop_reset_type   = get_node()->create_service<dsr_msgs2::srv::SetSafeStopResetType>(svc_prefix_ + "system/set_safe_stop_reset_type", set_safe_stop_reset_type_cb);           
+  m_nh_srv_get_last_alarm             = get_node()->create_service<dsr_msgs2::srv::GetLastAlarm>(svc_prefix_ + "system/get_last_alarm", get_last_alarm_cb);   
+  m_nh_srv_servo_off                  = get_node()->create_service<dsr_msgs2::srv::ServoOff>(svc_prefix_ + "system/servo_off", servo_off_cb);   
+  m_nh_srv_set_robot_control          = get_node()->create_service<dsr_msgs2::srv::SetRobotControl>(svc_prefix_ + "system/set_robot_control", set_robot_control_cb);
+  m_nh_srv_change_collision_sensitivity = get_node()->create_service<dsr_msgs2::srv::ChangeCollisionSensitivity>(svc_prefix_ + "system/change_collision_sensitivity", change_collision_sensitivity_cb);   
+  m_nh_srv_set_safety_mode          = get_node()->create_service<dsr_msgs2::srv::SetSafetyMode>(svc_prefix_ + "system/set_safety_mode", set_safety_mode_cb);
 	
 
   //  motion Operations
-  m_nh_srv_move_joint                 = get_node()->create_service<dsr_msgs2::srv::MoveJoint>("motion/move_joint", movej_cb);                                
-  m_nh_srv_move_line                  = get_node()->create_service<dsr_msgs2::srv::MoveLine>("motion/move_line", movel_cb);                        
-  m_nh_srv_move_jointx                = get_node()->create_service<dsr_msgs2::srv::MoveJointx>("motion/move_jointx", movejx_cb);               
-  m_nh_srv_move_circle                = get_node()->create_service<dsr_msgs2::srv::MoveCircle>("motion/move_circle", movec_cb);       
-  m_nh_srv_move_spline_joint          = get_node()->create_service<dsr_msgs2::srv::MoveSplineJoint>("motion/move_spline_joint", movesj_cb);      
-  m_nh_srv_move_spline_task           = get_node()->create_service<dsr_msgs2::srv::MoveSplineTask>("motion/move_spline_task", movesx_cb);          
-  m_nh_srv_move_blending              = get_node()->create_service<dsr_msgs2::srv::MoveBlending>("motion/move_blending", moveb_cb);          
-  m_nh_srv_move_spiral                = get_node()->create_service<dsr_msgs2::srv::MoveSpiral>("motion/move_spiral", movespiral_cb);              
-  m_nh_srv_move_periodic              = get_node()->create_service<dsr_msgs2::srv::MovePeriodic>("motion/move_periodic", moveperiodic_cb);              
-  m_nh_srv_move_wait                  = get_node()->create_service<dsr_msgs2::srv::MoveWait>("motion/move_wait", movewait_cb);                  
-  m_nh_srv_jog                        = get_node()->create_service<dsr_msgs2::srv::Jog>("motion/jog", jog_cb);              
-  m_nh_srv_jog_multi                  = get_node()->create_service<dsr_msgs2::srv::JogMulti>("motion/jog_multi", jog_multi_cb);                      
-  m_nh_srv_move_pause                 = get_node()->create_service<dsr_msgs2::srv::MovePause>("motion/move_pause", move_pause_cb);                      
-  // m_nh_srv_move_stop                  = get_node()->create_service<dsr_msgs2::srv::MoveStop>("motion/move_stop", move_stop_cb, rmw_qos_profile_services_default, cb_group_);
+  m_nh_srv_move_joint                 = get_node()->create_service<dsr_msgs2::srv::MoveJoint>(svc_prefix_ + "motion/move_joint", movej_cb);                                
+  m_nh_srv_move_line                  = get_node()->create_service<dsr_msgs2::srv::MoveLine>(svc_prefix_ + "motion/move_line", movel_cb);                        
+  m_nh_srv_move_jointx                = get_node()->create_service<dsr_msgs2::srv::MoveJointx>(svc_prefix_ + "motion/move_jointx", movejx_cb);               
+  m_nh_srv_move_circle                = get_node()->create_service<dsr_msgs2::srv::MoveCircle>(svc_prefix_ + "motion/move_circle", movec_cb);       
+  m_nh_srv_move_spline_joint          = get_node()->create_service<dsr_msgs2::srv::MoveSplineJoint>(svc_prefix_ + "motion/move_spline_joint", movesj_cb);      
+  m_nh_srv_move_spline_task           = get_node()->create_service<dsr_msgs2::srv::MoveSplineTask>(svc_prefix_ + "motion/move_spline_task", movesx_cb);          
+  m_nh_srv_move_blending              = get_node()->create_service<dsr_msgs2::srv::MoveBlending>(svc_prefix_ + "motion/move_blending", moveb_cb);          
+  m_nh_srv_move_spiral                = get_node()->create_service<dsr_msgs2::srv::MoveSpiral>(svc_prefix_ + "motion/move_spiral", movespiral_cb);              
+  m_nh_srv_move_periodic              = get_node()->create_service<dsr_msgs2::srv::MovePeriodic>(svc_prefix_ + "motion/move_periodic", moveperiodic_cb);              
+  m_nh_srv_move_wait                  = get_node()->create_service<dsr_msgs2::srv::MoveWait>(svc_prefix_ + "motion/move_wait", movewait_cb);                  
+  m_nh_srv_jog                        = get_node()->create_service<dsr_msgs2::srv::Jog>(svc_prefix_ + "motion/jog", jog_cb);              
+  m_nh_srv_jog_multi                  = get_node()->create_service<dsr_msgs2::srv::JogMulti>(svc_prefix_ + "motion/jog_multi", jog_multi_cb);                      
+  m_nh_srv_move_pause                 = get_node()->create_service<dsr_msgs2::srv::MovePause>(svc_prefix_ + "motion/move_pause", move_pause_cb);                      
+  // m_nh_srv_move_stop                  = get_node()->create_service<dsr_msgs2::srv::MoveStop>(svc_prefix_ + "motion/move_stop", move_stop_cb, rmw_qos_profile_services_default, cb_group_);
   
   rclcpp::QoS qos_profile(10); //`rmw_qos_profile_services_default` has been deprecated using qos(depth) instead
-  m_nh_srv_move_stop = get_node()->create_service<dsr_msgs2::srv::MoveStop>("motion/move_stop", move_stop_cb, qos_profile, cb_group_);  m_nh_srv_move_resume                = get_node()->create_service<dsr_msgs2::srv::MoveResume>("motion/move_resume", move_resume_cb);                  
+  m_nh_srv_move_stop = get_node()->create_service<dsr_msgs2::srv::MoveStop>(svc_prefix_ + "motion/move_stop", move_stop_cb, qos_profile, cb_group_);  m_nh_srv_move_resume                = get_node()->create_service<dsr_msgs2::srv::MoveResume>(svc_prefix_ + "motion/move_resume", move_resume_cb);                  
   
-  m_nh_srv_move_resume                = get_node()->create_service<dsr_msgs2::srv::MoveResume>("motion/move_resume", move_resume_cb);                  
-  m_nh_srv_trans                      = get_node()->create_service<dsr_msgs2::srv::Trans>("motion/trans", trans_cb);                  
-  m_nh_srv_fkin                       = get_node()->create_service<dsr_msgs2::srv::Fkin>("motion/fkin", fkin_cb);              
-  m_nh_srv_ikin                       = get_node()->create_service<dsr_msgs2::srv::Ikin>("motion/ikin", ikin_cb);              
-  m_nh_srv_set_ref_coord              = get_node()->create_service<dsr_msgs2::srv::SetRefCoord>("motion/set_ref_coord", set_ref_coord_cb);                  
-  m_nh_srv_move_home                  = get_node()->create_service<dsr_msgs2::srv::MoveHome>("motion/move_home", move_home_cb);                  
-  m_nh_srv_check_motion               = get_node()->create_service<dsr_msgs2::srv::CheckMotion>("motion/check_motion", check_motion_cb);                  
-  m_nh_srv_change_operation_speed     = get_node()->create_service<dsr_msgs2::srv::ChangeOperationSpeed>("motion/change_operation_speed", change_operation_speed_cb);                  
-  m_nh_srv_enable_alter_motion        = get_node()->create_service<dsr_msgs2::srv::EnableAlterMotion>("motion/enable_alter_motion", enable_alter_motion_cb);                      
-  m_nh_srv_alter_motion               = get_node()->create_service<dsr_msgs2::srv::AlterMotion>("motion/alter_motion", alter_motion_cb);              
-  m_nh_srv_disable_alter_motion       = get_node()->create_service<dsr_msgs2::srv::DisableAlterMotion>("motion/disable_alter_motion", disable_alter_motion_cb);                  
-  m_nh_srv_set_singularity_handling   = get_node()->create_service<dsr_msgs2::srv::SetSingularityHandling>("motion/set_singularity_handling", set_singularity_handling_cb);                      
-  m_nh_srv_set_singular_handling_force = get_node()->create_service<dsr_msgs2::srv::SetSingularHandlingForce>("motion/set_singular_handling_force", set_singular_handling_force_cb);
+  m_nh_srv_move_resume                = get_node()->create_service<dsr_msgs2::srv::MoveResume>(svc_prefix_ + "motion/move_resume", move_resume_cb);                  
+  m_nh_srv_trans                      = get_node()->create_service<dsr_msgs2::srv::Trans>(svc_prefix_ + "motion/trans", trans_cb);                  
+  m_nh_srv_fkin                       = get_node()->create_service<dsr_msgs2::srv::Fkin>(svc_prefix_ + "motion/fkin", fkin_cb);              
+  m_nh_srv_ikin                       = get_node()->create_service<dsr_msgs2::srv::Ikin>(svc_prefix_ + "motion/ikin", ikin_cb);              
+  m_nh_srv_set_ref_coord              = get_node()->create_service<dsr_msgs2::srv::SetRefCoord>(svc_prefix_ + "motion/set_ref_coord", set_ref_coord_cb);                  
+  m_nh_srv_move_home                  = get_node()->create_service<dsr_msgs2::srv::MoveHome>(svc_prefix_ + "motion/move_home", move_home_cb);                  
+  m_nh_srv_check_motion               = get_node()->create_service<dsr_msgs2::srv::CheckMotion>(svc_prefix_ + "motion/check_motion", check_motion_cb);                  
+  m_nh_srv_change_operation_speed     = get_node()->create_service<dsr_msgs2::srv::ChangeOperationSpeed>(svc_prefix_ + "motion/change_operation_speed", change_operation_speed_cb);                  
+  m_nh_srv_enable_alter_motion        = get_node()->create_service<dsr_msgs2::srv::EnableAlterMotion>(svc_prefix_ + "motion/enable_alter_motion", enable_alter_motion_cb);                      
+  m_nh_srv_alter_motion               = get_node()->create_service<dsr_msgs2::srv::AlterMotion>(svc_prefix_ + "motion/alter_motion", alter_motion_cb);              
+  m_nh_srv_disable_alter_motion       = get_node()->create_service<dsr_msgs2::srv::DisableAlterMotion>(svc_prefix_ + "motion/disable_alter_motion", disable_alter_motion_cb);                  
+  m_nh_srv_set_singularity_handling   = get_node()->create_service<dsr_msgs2::srv::SetSingularityHandling>(svc_prefix_ + "motion/set_singularity_handling", set_singularity_handling_cb);                      
+  m_nh_srv_set_singular_handling_force = get_node()->create_service<dsr_msgs2::srv::SetSingularHandlingForce>(svc_prefix_ + "motion/set_singular_handling_force", set_singular_handling_force_cb);
 
   //  auxiliary_control
-  m_nh_srv_get_control_mode               = get_node()->create_service<dsr_msgs2::srv::GetControlMode>("aux_control/get_control_mode", get_control_mode_cb);                           
-  m_nh_srv_get_control_space              = get_node()->create_service<dsr_msgs2::srv::GetControlSpace>("aux_control/get_control_space", get_control_space_cb);                          
-  m_nh_srv_get_current_posj               = get_node()->create_service<dsr_msgs2::srv::GetCurrentPosj>("aux_control/get_current_posj", get_current_posj_cb);                                            
-  m_nh_srv_get_current_velj               = get_node()->create_service<dsr_msgs2::srv::GetCurrentVelj>("aux_control/get_current_velj", get_current_velj_cb);                                
-  m_nh_srv_get_desired_posj               = get_node()->create_service<dsr_msgs2::srv::GetDesiredPosj>("aux_control/get_desired_posj", get_desired_posj_cb);         
-  m_nh_srv_get_desired_velj               = get_node()->create_service<dsr_msgs2::srv::GetDesiredVelj>("aux_control/get_desired_velj", get_desired_velj_cb);                                   
-  m_nh_srv_get_current_posx               = get_node()->create_service<dsr_msgs2::srv::GetCurrentPosx>("aux_control/get_current_posx", get_current_posx_cb);                               
-  m_nh_srv_get_current_tool_flange_posx   = get_node()->create_service<dsr_msgs2::srv::GetCurrentToolFlangePosx>("aux_control/get_current_tool_flange_posx", get_current_tool_flange_posx_cb);                 
-  m_nh_srv_get_current_velx               = get_node()->create_service<dsr_msgs2::srv::GetCurrentVelx>("aux_control/get_current_velx", get_current_velx_cb);                         
-  m_nh_srv_get_desired_posx               = get_node()->create_service<dsr_msgs2::srv::GetDesiredPosx>("aux_control/get_desired_posx", get_desired_posx_cb);     
-  m_nh_srv_get_desired_velx               = get_node()->create_service<dsr_msgs2::srv::GetDesiredVelx>("aux_control/get_desired_velx", get_desired_velx_cb);                             
-  m_nh_srv_get_current_solution_space     = get_node()->create_service<dsr_msgs2::srv::GetCurrentSolutionSpace>("aux_control/get_current_solution_space", get_current_solution_space_cb);                     
-  m_nh_srv_get_current_rotm               = get_node()->create_service<dsr_msgs2::srv::GetCurrentRotm>("aux_control/get_current_rotm", get_current_rotm_cb);                     
-  m_nh_srv_get_joint_torque               = get_node()->create_service<dsr_msgs2::srv::GetJointTorque>("aux_control/get_joint_torque", get_joint_torque_cb);                     
-  m_nh_srv_get_external_torque            = get_node()->create_service<dsr_msgs2::srv::GetExternalTorque>("aux_control/get_external_torque", get_external_torque_cb);                
-  m_nh_srv_get_tool_force                 = get_node()->create_service<dsr_msgs2::srv::GetToolForce>("aux_control/get_tool_force", get_tool_force_cb);                               
-  m_nh_srv_get_solution_space             = get_node()->create_service<dsr_msgs2::srv::GetSolutionSpace>("aux_control/get_solution_space", get_solution_space_cb);       
-  m_nh_srv_get_orientation_error          = get_node()->create_service<dsr_msgs2::srv::GetOrientationError>("aux_control/get_orientation_error", get_orientation_error_cb);              
-  m_nh_srv_get_robot_link_info            = get_node()->create_service<dsr_msgs2::srv::GetRobotLinkInfo>("aux_control/get_robot_link_info", get_robot_link_info_cb);
-
+  m_nh_srv_get_control_mode               = get_node()->create_service<dsr_msgs2::srv::GetControlMode>(svc_prefix_ + "aux_control/get_control_mode", get_control_mode_cb);                           
+  m_nh_srv_get_control_space              = get_node()->create_service<dsr_msgs2::srv::GetControlSpace>(svc_prefix_ + "aux_control/get_control_space", get_control_space_cb);                          
+  m_nh_srv_get_current_posj               = get_node()->create_service<dsr_msgs2::srv::GetCurrentPosj>(svc_prefix_ + "aux_control/get_current_posj", get_current_posj_cb);                                            
+  m_nh_srv_get_current_velj               = get_node()->create_service<dsr_msgs2::srv::GetCurrentVelj>(svc_prefix_ + "aux_control/get_current_velj", get_current_velj_cb);                                
+  m_nh_srv_get_desired_posj               = get_node()->create_service<dsr_msgs2::srv::GetDesiredPosj>(svc_prefix_ + "aux_control/get_desired_posj", get_desired_posj_cb);         
+  m_nh_srv_get_desired_velj               = get_node()->create_service<dsr_msgs2::srv::GetDesiredVelj>(svc_prefix_ + "aux_control/get_desired_velj", get_desired_velj_cb);                                   
+  m_nh_srv_get_current_posx               = get_node()->create_service<dsr_msgs2::srv::GetCurrentPosx>(svc_prefix_ + "aux_control/get_current_posx", get_current_posx_cb);                               
+  m_nh_srv_get_current_tool_flange_posx   = get_node()->create_service<dsr_msgs2::srv::GetCurrentToolFlangePosx>(svc_prefix_ + "aux_control/get_current_tool_flange_posx", get_current_tool_flange_posx_cb);                 
+  m_nh_srv_get_current_velx               = get_node()->create_service<dsr_msgs2::srv::GetCurrentVelx>(svc_prefix_ + "aux_control/get_current_velx", get_current_velx_cb);                         
+  m_nh_srv_get_desired_posx               = get_node()->create_service<dsr_msgs2::srv::GetDesiredPosx>(svc_prefix_ + "aux_control/get_desired_posx", get_desired_posx_cb);     
+  m_nh_srv_get_desired_velx               = get_node()->create_service<dsr_msgs2::srv::GetDesiredVelx>(svc_prefix_ + "aux_control/get_desired_velx", get_desired_velx_cb);                             
+  m_nh_srv_get_current_solution_space     = get_node()->create_service<dsr_msgs2::srv::GetCurrentSolutionSpace>(svc_prefix_ + "aux_control/get_current_solution_space", get_current_solution_space_cb);                     
+  m_nh_srv_get_current_rotm               = get_node()->create_service<dsr_msgs2::srv::GetCurrentRotm>(svc_prefix_ + "aux_control/get_current_rotm", get_current_rotm_cb);                     
+  m_nh_srv_get_joint_torque               = get_node()->create_service<dsr_msgs2::srv::GetJointTorque>(svc_prefix_ + "aux_control/get_joint_torque", get_joint_torque_cb);                     
+  m_nh_srv_get_external_torque            = get_node()->create_service<dsr_msgs2::srv::GetExternalTorque>(svc_prefix_ + "aux_control/get_external_torque", get_external_torque_cb);                
+  m_nh_srv_get_tool_force                 = get_node()->create_service<dsr_msgs2::srv::GetToolForce>(svc_prefix_ + "aux_control/get_tool_force", get_tool_force_cb);                               
+  m_nh_srv_get_solution_space             = get_node()->create_service<dsr_msgs2::srv::GetSolutionSpace>(svc_prefix_ + "aux_control/get_solution_space", get_solution_space_cb);       
+  m_nh_srv_get_orientation_error          = get_node()->create_service<dsr_msgs2::srv::GetOrientationError>(svc_prefix_ + "aux_control/get_orientation_error", get_orientation_error_cb);              
+  m_nh_srv_get_robot_link_info            = get_node()->create_service<dsr_msgs2::srv::GetRobotLinkInfo>(svc_prefix_ + "aux_control/get_robot_link_info", get_robot_link_info_cb);
+  
   //  force/stiffness
-  m_nh_srv_parallel_axis1                 = get_node()->create_service<dsr_msgs2::srv::ParallelAxis1>("force/parallel_axis1", parallel_axis1_cb);  
-  m_nh_srv_parallel_axis2                 = get_node()->create_service<dsr_msgs2::srv::ParallelAxis2>("force/parallel_axis2", parallel_axis2_cb);  
-  m_nh_srv_align_axis1                    = get_node()->create_service<dsr_msgs2::srv::AlignAxis1>("force/align_axis1", align_axis1_cb);          
-  m_nh_srv_align_axis2                    = get_node()->create_service<dsr_msgs2::srv::AlignAxis2>("force/align_axis2", align_axis2_cb);      
-  m_nh_srv_is_done_bolt_tightening        = get_node()->create_service<dsr_msgs2::srv::IsDoneBoltTightening>("force/is_done_bolt_tightening", is_done_bolt_tightening_cb);      
-  m_nh_srv_release_compliance_ctrl        = get_node()->create_service<dsr_msgs2::srv::ReleaseComplianceCtrl>("force/release_compliance_ctrl", release_compliance_ctrl_cb);          
-  m_nh_srv_task_compliance_ctrl           = get_node()->create_service<dsr_msgs2::srv::TaskComplianceCtrl>("force/task_compliance_ctrl", task_compliance_ctrl_cb);          
-  m_nh_srv_set_stiffnessx                 = get_node()->create_service<dsr_msgs2::srv::SetStiffnessx>("force/set_stiffnessx", set_stiffnessx_cb);          
-  m_nh_srv_calc_coord                     = get_node()->create_service<dsr_msgs2::srv::CalcCoord>("force/calc_coord", calc_coord_cb);      
-  m_nh_srv_set_user_cart_coord1           = get_node()->create_service<dsr_msgs2::srv::SetUserCartCoord1>("force/set_user_cart_coord1", set_user_cart_coord1_cb);          
-  m_nh_srv_set_user_cart_coord2           = get_node()->create_service<dsr_msgs2::srv::SetUserCartCoord2>("force/set_user_cart_coord2", set_user_cart_coord2_cb);              
-  m_nh_srv_set_user_cart_coord3           = get_node()->create_service<dsr_msgs2::srv::SetUserCartCoord3>("force/set_user_cart_coord3", set_user_cart_coord3_cb);      
-  m_nh_srv_overwrite_user_cart_coord      = get_node()->create_service<dsr_msgs2::srv::OverwriteUserCartCoord>("force/overwrite_user_cart_coord", overwrite_user_cart_coord_cb);      
-  m_nh_srv_get_user_cart_coord            = get_node()->create_service<dsr_msgs2::srv::GetUserCartCoord>("force/get_user_cart_coord", get_user_cart_coord_cb);          
-  m_nh_srv_set_desired_force              = get_node()->create_service<dsr_msgs2::srv::SetDesiredForce>("force/set_desired_force", set_desired_force_cb);          
-  m_nh_srv_release_force                  = get_node()->create_service<dsr_msgs2::srv::ReleaseForce>("force/release_force", release_force_cb);      
-  m_nh_srv_check_position_condition       = get_node()->create_service<dsr_msgs2::srv::CheckPositionCondition>("force/check_position_condition", check_position_condition_cb);          
-  m_nh_srv_check_force_condition          = get_node()->create_service<dsr_msgs2::srv::CheckForceCondition>("force/check_force_condition", check_force_condition_cb);      
-  m_nh_srv_check_orientation_condition1   = get_node()->create_service<dsr_msgs2::srv::CheckOrientationCondition1>("force/check_orientation_condition1", check_orientation_condition1_cb);             
-  m_nh_srv_check_orientation_condition2   = get_node()->create_service<dsr_msgs2::srv::CheckOrientationCondition2>("force/check_orientation_condition2", check_orientation_condition2_cb);            
-  m_nh_srv_coord_transform                = get_node()->create_service<dsr_msgs2::srv::CoordTransform>("force/coord_transform", coord_transform_cb);          
-  m_nh_srv_get_workpiece_weight           = get_node()->create_service<dsr_msgs2::srv::GetWorkpieceWeight>("force/get_workpiece_weight", get_workpiece_weight_cb);          
-  m_nh_srv_reset_workpiece_weight         = get_node()->create_service<dsr_msgs2::srv::ResetWorkpieceWeight>("force/reset_workpiece_weight", reset_workpiece_weight_cb);          
+  m_nh_srv_parallel_axis1                 = get_node()->create_service<dsr_msgs2::srv::ParallelAxis1>(svc_prefix_ + "force/parallel_axis1", parallel_axis1_cb);  
+  m_nh_srv_parallel_axis2                 = get_node()->create_service<dsr_msgs2::srv::ParallelAxis2>(svc_prefix_ + "force/parallel_axis2", parallel_axis2_cb);  
+  m_nh_srv_align_axis1                    = get_node()->create_service<dsr_msgs2::srv::AlignAxis1>(svc_prefix_ + "force/align_axis1", align_axis1_cb);          
+  m_nh_srv_align_axis2                    = get_node()->create_service<dsr_msgs2::srv::AlignAxis2>(svc_prefix_ + "force/align_axis2", align_axis2_cb);      
+  m_nh_srv_is_done_bolt_tightening        = get_node()->create_service<dsr_msgs2::srv::IsDoneBoltTightening>(svc_prefix_ + "force/is_done_bolt_tightening", is_done_bolt_tightening_cb);      
+  m_nh_srv_release_compliance_ctrl        = get_node()->create_service<dsr_msgs2::srv::ReleaseComplianceCtrl>(svc_prefix_ + "force/release_compliance_ctrl", release_compliance_ctrl_cb);          
+  m_nh_srv_task_compliance_ctrl           = get_node()->create_service<dsr_msgs2::srv::TaskComplianceCtrl>(svc_prefix_ + "force/task_compliance_ctrl", task_compliance_ctrl_cb);          
+  m_nh_srv_set_stiffnessx                 = get_node()->create_service<dsr_msgs2::srv::SetStiffnessx>(svc_prefix_ + "force/set_stiffnessx", set_stiffnessx_cb);          
+  m_nh_srv_calc_coord                     = get_node()->create_service<dsr_msgs2::srv::CalcCoord>(svc_prefix_ + "force/calc_coord", calc_coord_cb);      
+  m_nh_srv_set_user_cart_coord1           = get_node()->create_service<dsr_msgs2::srv::SetUserCartCoord1>(svc_prefix_ + "force/set_user_cart_coord1", set_user_cart_coord1_cb);          
+  m_nh_srv_set_user_cart_coord2           = get_node()->create_service<dsr_msgs2::srv::SetUserCartCoord2>(svc_prefix_ + "force/set_user_cart_coord2", set_user_cart_coord2_cb);              
+  m_nh_srv_set_user_cart_coord3           = get_node()->create_service<dsr_msgs2::srv::SetUserCartCoord3>(svc_prefix_ + "force/set_user_cart_coord3", set_user_cart_coord3_cb);      
+  m_nh_srv_overwrite_user_cart_coord      = get_node()->create_service<dsr_msgs2::srv::OverwriteUserCartCoord>(svc_prefix_ + "force/overwrite_user_cart_coord", overwrite_user_cart_coord_cb);      
+  m_nh_srv_get_user_cart_coord            = get_node()->create_service<dsr_msgs2::srv::GetUserCartCoord>(svc_prefix_ + "force/get_user_cart_coord", get_user_cart_coord_cb);          
+  m_nh_srv_set_desired_force              = get_node()->create_service<dsr_msgs2::srv::SetDesiredForce>(svc_prefix_ + "force/set_desired_force", set_desired_force_cb);          
+  m_nh_srv_release_force                  = get_node()->create_service<dsr_msgs2::srv::ReleaseForce>(svc_prefix_ + "force/release_force", release_force_cb);      
+  m_nh_srv_check_position_condition       = get_node()->create_service<dsr_msgs2::srv::CheckPositionCondition>(svc_prefix_ + "force/check_position_condition", check_position_condition_cb);          
+  m_nh_srv_check_force_condition          = get_node()->create_service<dsr_msgs2::srv::CheckForceCondition>(svc_prefix_ + "force/check_force_condition", check_force_condition_cb);      
+  m_nh_srv_check_orientation_condition1   = get_node()->create_service<dsr_msgs2::srv::CheckOrientationCondition1>(svc_prefix_ + "force/check_orientation_condition1", check_orientation_condition1_cb);             
+  m_nh_srv_check_orientation_condition2   = get_node()->create_service<dsr_msgs2::srv::CheckOrientationCondition2>(svc_prefix_ + "force/check_orientation_condition2", check_orientation_condition2_cb);            
+  m_nh_srv_coord_transform                = get_node()->create_service<dsr_msgs2::srv::CoordTransform>(svc_prefix_ + "force/coord_transform", coord_transform_cb);          
+  m_nh_srv_get_workpiece_weight           = get_node()->create_service<dsr_msgs2::srv::GetWorkpieceWeight>(svc_prefix_ + "force/get_workpiece_weight", get_workpiece_weight_cb);          
+  m_nh_srv_reset_workpiece_weight         = get_node()->create_service<dsr_msgs2::srv::ResetWorkpieceWeight>(svc_prefix_ + "force/reset_workpiece_weight", reset_workpiece_weight_cb);          
 
   //  IO
-  m_nh_srv_set_ctrl_box_digital_output        = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxDigitalOutput>("io/set_ctrl_box_digital_output", set_digital_output_cb);    
-  m_nh_srv_get_ctrl_box_digital_input         = get_node()->create_service<dsr_msgs2::srv::GetCtrlBoxDigitalInput>("io/get_ctrl_box_digital_input", get_digital_input_cb);   
-  m_nh_srv_set_tool_digital_output            = get_node()->create_service<dsr_msgs2::srv::SetToolDigitalOutput>("io/set_tool_digital_output", set_tool_digital_output_cb);   
-  m_nh_srv_get_tool_digital_input             = get_node()->create_service<dsr_msgs2::srv::GetToolDigitalInput>("io/get_tool_digital_input", get_tool_digital_input_cb);   
-  m_nh_srv_set_ctrl_box_analog_output         = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxAnalogOutput>("io/set_ctrl_box_analog_output", set_analog_output_cb);   
-  m_nh_srv_get_ctrl_box_analog_input          = get_node()->create_service<dsr_msgs2::srv::GetCtrlBoxAnalogInput>("io/get_ctrl_box_analog_input", get_analog_input_cb);   
-  m_nh_srv_set_ctrl_box_analog_output_type    = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxAnalogOutputType>("io/set_ctrl_box_analog_output_type", set_analog_output_type_cb);   
-  m_nh_srv_set_ctrl_box_analog_input_type     = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxAnalogInputType>("io/set_ctrl_box_analog_input_type", set_analog_input_type_cb);       
-  m_nh_srv_get_ctrl_box_digital_output        = get_node()->create_service<dsr_msgs2::srv::GetCtrlBoxDigitalOutput>("io/get_ctrl_box_digital_output", get_digital_output_cb);   
-  m_nh_srv_get_tool_digital_output            = get_node()->create_service<dsr_msgs2::srv::GetToolDigitalOutput>("io/get_tool_digital_output", get_tool_digital_output_cb);   
+  m_nh_srv_set_ctrl_box_digital_output        = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxDigitalOutput>(svc_prefix_ + "io/set_ctrl_box_digital_output", set_digital_output_cb);    
+  m_nh_srv_get_ctrl_box_digital_input         = get_node()->create_service<dsr_msgs2::srv::GetCtrlBoxDigitalInput>(svc_prefix_ + "io/get_ctrl_box_digital_input", get_digital_input_cb);   
+  m_nh_srv_set_tool_digital_output            = get_node()->create_service<dsr_msgs2::srv::SetToolDigitalOutput>(svc_prefix_ + "io/set_tool_digital_output", set_tool_digital_output_cb);   
+  m_nh_srv_get_tool_digital_input             = get_node()->create_service<dsr_msgs2::srv::GetToolDigitalInput>(svc_prefix_ + "io/get_tool_digital_input", get_tool_digital_input_cb);   
+  m_nh_srv_set_ctrl_box_analog_output         = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxAnalogOutput>(svc_prefix_ + "io/set_ctrl_box_analog_output", set_analog_output_cb);   
+  m_nh_srv_get_ctrl_box_analog_input          = get_node()->create_service<dsr_msgs2::srv::GetCtrlBoxAnalogInput>(svc_prefix_ + "io/get_ctrl_box_analog_input", get_analog_input_cb);   
+  m_nh_srv_set_ctrl_box_analog_output_type    = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxAnalogOutputType>(svc_prefix_ + "io/set_ctrl_box_analog_output_type", set_analog_output_type_cb);   
+  m_nh_srv_set_ctrl_box_analog_input_type     = get_node()->create_service<dsr_msgs2::srv::SetCtrlBoxAnalogInputType>(svc_prefix_ + "io/set_ctrl_box_analog_input_type", set_analog_input_type_cb);       
+  m_nh_srv_get_ctrl_box_digital_output        = get_node()->create_service<dsr_msgs2::srv::GetCtrlBoxDigitalOutput>(svc_prefix_ + "io/get_ctrl_box_digital_output", get_digital_output_cb);   
+  m_nh_srv_get_tool_digital_output            = get_node()->create_service<dsr_msgs2::srv::GetToolDigitalOutput>(svc_prefix_ + "io/get_tool_digital_output", get_tool_digital_output_cb);   
 
   //  Modbus
-  m_nh_srv_set_modbus_output      = get_node()->create_service<dsr_msgs2::srv::SetModbusOutput>("modbus/set_modbus_output", set_modbus_output_cb);    
-  m_nh_srv_get_modbus_input       = get_node()->create_service<dsr_msgs2::srv::GetModbusInput>("modbus/get_modbus_input", get_modbus_input_cb);    
-  m_nh_srv_config_create_modbus   = get_node()->create_service<dsr_msgs2::srv::ConfigCreateModbus>("modbus/config_create_modbus", config_create_modbus_cb);
-  m_nh_srv_config_delete_modbus   = get_node()->create_service<dsr_msgs2::srv::ConfigDeleteModbus>("modbus/config_delete_modbus", config_delete_modbus_cb);
+  m_nh_srv_set_modbus_output      = get_node()->create_service<dsr_msgs2::srv::SetModbusOutput>(svc_prefix_ + "modbus/set_modbus_output", set_modbus_output_cb);    
+  m_nh_srv_get_modbus_input       = get_node()->create_service<dsr_msgs2::srv::GetModbusInput>(svc_prefix_ + "modbus/get_modbus_input", get_modbus_input_cb);    
+  m_nh_srv_config_create_modbus   = get_node()->create_service<dsr_msgs2::srv::ConfigCreateModbus>(svc_prefix_ + "modbus/config_create_modbus", config_create_modbus_cb);
+  m_nh_srv_config_delete_modbus   = get_node()->create_service<dsr_msgs2::srv::ConfigDeleteModbus>(svc_prefix_ + "modbus/config_delete_modbus", config_delete_modbus_cb);
 
   //  TCP
-  m_nh_srv_config_create_tcp      = get_node()->create_service<dsr_msgs2::srv::ConfigCreateTcp>("tcp/config_create_tcp", config_create_tcp_cb);    
-  m_nh_srv_config_delete_tcp      = get_node()->create_service<dsr_msgs2::srv::ConfigDeleteTcp>("tcp/config_delete_tcp", config_delete_tcp_cb);  
-  m_nh_srv_get_current_tcp        = get_node()->create_service<dsr_msgs2::srv::GetCurrentTcp>("tcp/get_current_tcp", get_current_tcp_cb);       
-  m_nh_srv_set_current_tcp        = get_node()->create_service<dsr_msgs2::srv::SetCurrentTcp>("tcp/set_current_tcp", set_current_tcp_cb);       
+  m_nh_srv_config_create_tcp      = get_node()->create_service<dsr_msgs2::srv::ConfigCreateTcp>(svc_prefix_ + "tcp/config_create_tcp", config_create_tcp_cb);    
+  m_nh_srv_config_delete_tcp      = get_node()->create_service<dsr_msgs2::srv::ConfigDeleteTcp>(svc_prefix_ + "tcp/config_delete_tcp", config_delete_tcp_cb);  
+  m_nh_srv_get_current_tcp        = get_node()->create_service<dsr_msgs2::srv::GetCurrentTcp>(svc_prefix_ + "tcp/get_current_tcp", get_current_tcp_cb);       
+  m_nh_srv_set_current_tcp        = get_node()->create_service<dsr_msgs2::srv::SetCurrentTcp>(svc_prefix_ + "tcp/set_current_tcp", set_current_tcp_cb);       
 
   //  Tool
-  m_nh_srv_config_create_tool     = get_node()->create_service<dsr_msgs2::srv::ConfigCreateTool>("tool/config_create_tool", config_create_tool_cb); 
-  m_nh_srv_config_delete_tool     = get_node()->create_service<dsr_msgs2::srv::ConfigDeleteTool>("tool/config_delete_tool", config_delete_tool_cb);    
-  m_nh_srv_get_current_tool       = get_node()->create_service<dsr_msgs2::srv::GetCurrentTool>("tool/get_current_tool", get_current_tool_cb);     
-  m_nh_srv_set_current_tool       = get_node()->create_service<dsr_msgs2::srv::SetCurrentTool>("tool/set_current_tool", set_current_tool_cb);     
-  m_nh_srv_set_tool_shape         = get_node()->create_service<dsr_msgs2::srv::SetToolShape>("tool/set_tool_shape", set_tool_shape_cb); 
+  m_nh_srv_config_create_tool     = get_node()->create_service<dsr_msgs2::srv::ConfigCreateTool>(svc_prefix_ + "tool/config_create_tool", config_create_tool_cb); 
+  m_nh_srv_config_delete_tool     = get_node()->create_service<dsr_msgs2::srv::ConfigDeleteTool>(svc_prefix_ + "tool/config_delete_tool", config_delete_tool_cb);    
+  m_nh_srv_get_current_tool       = get_node()->create_service<dsr_msgs2::srv::GetCurrentTool>(svc_prefix_ + "tool/get_current_tool", get_current_tool_cb);     
+  m_nh_srv_set_current_tool       = get_node()->create_service<dsr_msgs2::srv::SetCurrentTool>(svc_prefix_ + "tool/set_current_tool", set_current_tool_cb);     
+  m_nh_srv_set_tool_shape         = get_node()->create_service<dsr_msgs2::srv::SetToolShape>(svc_prefix_ + "tool/set_tool_shape", set_tool_shape_cb); 
 
   //  DRL
-  m_nh_srv_drl_pause              = get_node()->create_service<dsr_msgs2::srv::DrlPause>("drl/drl_pause", drl_pause_cb);                         
-  m_nh_srv_drl_start              = get_node()->create_service<dsr_msgs2::srv::DrlStart>("drl/drl_start", drl_start_cb);    
-  m_nh_srv_drl_stop               = get_node()->create_service<dsr_msgs2::srv::DrlStop>("drl/drl_stop", drl_stop_cb);    
-  m_nh_srv_drl_resume             = get_node()->create_service<dsr_msgs2::srv::DrlResume>("drl/drl_resume", drl_resume_cb);        
-  m_nh_srv_get_drl_state          = get_node()->create_service<dsr_msgs2::srv::GetDrlState>("drl/get_drl_state", get_drl_state_cb);       
+  m_nh_srv_drl_pause              = get_node()->create_service<dsr_msgs2::srv::DrlPause>(svc_prefix_ + "drl/drl_pause", drl_pause_cb);                         
+  m_nh_srv_drl_start              = get_node()->create_service<dsr_msgs2::srv::DrlStart>(svc_prefix_ + "drl/drl_start", drl_start_cb);    
+  m_nh_srv_drl_stop               = get_node()->create_service<dsr_msgs2::srv::DrlStop>(svc_prefix_ + "drl/drl_stop", drl_stop_cb);    
+  m_nh_srv_drl_resume             = get_node()->create_service<dsr_msgs2::srv::DrlResume>(svc_prefix_ + "drl/drl_resume", drl_resume_cb);        
+  m_nh_srv_get_drl_state          = get_node()->create_service<dsr_msgs2::srv::GetDrlState>(svc_prefix_ + "drl/get_drl_state", get_drl_state_cb);       
 
   // RT
-  m_nh_connect_rt_control = get_node()->create_service<dsr_msgs2::srv::ConnectRtControl>("realtime/connect_rt_control", connect_rt_control_cb);
-  m_nh_disconnect_rt_control = get_node()->create_service<dsr_msgs2::srv::DisconnectRtControl>("realtime/disconnect_rt_control", disconnect_rt_control_cb);
-  m_nh_get_rt_control_output_version_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlOutputVersionList>("realtime/get_rt_control_output_version_list", get_rt_control_output_version_list_cb);
-  m_nh_get_rt_control_input_version_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlInputVersionList>("realtime/get_rt_control_input_version_list", get_rt_control_input_version_list_cb);
-  m_nh_get_rt_control_input_data_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlInputDataList>("realtime/get_rt_control_input_data_list", get_rt_control_input_data_list_cb);
-  m_nh_get_rt_control_output_data_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlOutputDataList>("realtime/get_rt_control_output_data_list", get_rt_control_output_data_list_cb);
-  m_nh_set_rt_control_input = get_node()->create_service<dsr_msgs2::srv::SetRtControlInput>("realtime/set_rt_control_input", set_rt_control_input_cb);
-  m_nh_set_rt_control_output = get_node()->create_service<dsr_msgs2::srv::SetRtControlOutput>("realtime/set_rt_control_output", set_rt_control_output_cb);
-  m_nh_start_rt_control = get_node()->create_service<dsr_msgs2::srv::StartRtControl>("realtime/start_rt_control", start_rt_control_cb);
-  m_nh_stop_rt_control = get_node()->create_service<dsr_msgs2::srv::StopRtControl>("realtime/stop_rt_control", stop_rt_control_cb);
-  m_nh_set_velj_rt = get_node()->create_service<dsr_msgs2::srv::SetVeljRt>("realtime/set_velj_rt", set_velj_rt_cb);
-  m_nh_set_accj_rt = get_node()->create_service<dsr_msgs2::srv::SetAccjRt>("realtime/set_accj_rt", set_accj_rt_cb);
-  m_nh_set_velx_rt = get_node()->create_service<dsr_msgs2::srv::SetVelxRt>("realtime/set_velx_rt", set_velx_rt_cb);
-  m_nh_set_accx_rt = get_node()->create_service<dsr_msgs2::srv::SetAccxRt>("realtime/set_accx_rt", set_accx_rt_cb);
-  m_nh_read_data_rt = get_node()->create_service<dsr_msgs2::srv::ReadDataRt>("realtime/read_data_rt", read_data_rt_cb);
-  m_nh_write_data_rt = get_node()->create_service<dsr_msgs2::srv::WriteDataRt>("realtime/write_data_rt", write_data_rt_cb);
+  m_nh_connect_rt_control = get_node()->create_service<dsr_msgs2::srv::ConnectRtControl>(svc_prefix_ + "realtime/connect_rt_control", connect_rt_control_cb);
+  m_nh_disconnect_rt_control = get_node()->create_service<dsr_msgs2::srv::DisconnectRtControl>(svc_prefix_ + "realtime/disconnect_rt_control", disconnect_rt_control_cb);
+  m_nh_get_rt_control_output_version_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlOutputVersionList>(svc_prefix_ + "realtime/get_rt_control_output_version_list", get_rt_control_output_version_list_cb);
+  m_nh_get_rt_control_input_version_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlInputVersionList>(svc_prefix_ + "realtime/get_rt_control_input_version_list", get_rt_control_input_version_list_cb);
+  m_nh_get_rt_control_input_data_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlInputDataList>(svc_prefix_ + "realtime/get_rt_control_input_data_list", get_rt_control_input_data_list_cb);
+  m_nh_get_rt_control_output_data_list = get_node()->create_service<dsr_msgs2::srv::GetRtControlOutputDataList>(svc_prefix_ + "realtime/get_rt_control_output_data_list", get_rt_control_output_data_list_cb);
+  m_nh_set_rt_control_input = get_node()->create_service<dsr_msgs2::srv::SetRtControlInput>(svc_prefix_ + "realtime/set_rt_control_input", set_rt_control_input_cb);
+  m_nh_set_rt_control_output = get_node()->create_service<dsr_msgs2::srv::SetRtControlOutput>(svc_prefix_ + "realtime/set_rt_control_output", set_rt_control_output_cb);
+  m_nh_start_rt_control = get_node()->create_service<dsr_msgs2::srv::StartRtControl>(svc_prefix_ + "realtime/start_rt_control", start_rt_control_cb);
+  m_nh_stop_rt_control = get_node()->create_service<dsr_msgs2::srv::StopRtControl>(svc_prefix_ + "realtime/stop_rt_control", stop_rt_control_cb);
+  m_nh_set_velj_rt = get_node()->create_service<dsr_msgs2::srv::SetVeljRt>(svc_prefix_ + "realtime/set_velj_rt", set_velj_rt_cb);
+  m_nh_set_accj_rt = get_node()->create_service<dsr_msgs2::srv::SetAccjRt>(svc_prefix_ + "realtime/set_accj_rt", set_accj_rt_cb);
+  m_nh_set_velx_rt = get_node()->create_service<dsr_msgs2::srv::SetVelxRt>(svc_prefix_ + "realtime/set_velx_rt", set_velx_rt_cb);
+  m_nh_set_accx_rt = get_node()->create_service<dsr_msgs2::srv::SetAccxRt>(svc_prefix_ + "realtime/set_accx_rt", set_accx_rt_cb);
+  m_nh_read_data_rt = get_node()->create_service<dsr_msgs2::srv::ReadDataRt>(svc_prefix_ + "realtime/read_data_rt", read_data_rt_cb);
+  m_nh_write_data_rt = get_node()->create_service<dsr_msgs2::srv::WriteDataRt>(svc_prefix_ + "realtime/write_data_rt", write_data_rt_cb);
 
   // PLC
-  m_nh_srv_get_input_register_int = get_node()->create_service<dsr_msgs2::srv::GetInputRegisterInt>("plc/get_input_register_int", get_input_register_int_cb);
-  m_nh_srv_get_input_register_bit = get_node()->create_service<dsr_msgs2::srv::GetInputRegisterBit>("plc/get_input_register_bit", get_input_register_bit_cb);
-  m_nh_srv_get_input_register_float = get_node()->create_service<dsr_msgs2::srv::GetInputRegisterFloat>("plc/get_input_register_float", get_input_register_float_cb);
-  m_nh_srv_set_output_register_int = get_node()->create_service<dsr_msgs2::srv::SetOutputRegisterInt>("plc/set_output_register_int", set_output_register_int_cb);
-  m_nh_srv_set_output_register_bit = get_node()->create_service<dsr_msgs2::srv::SetOutputRegisterBit>("plc/set_output_register_bit", set_output_register_bit_cb);
-  m_nh_srv_set_output_register_float = get_node()->create_service<dsr_msgs2::srv::SetOutputRegisterFloat>("plc/set_output_register_float", set_output_register_float_cb);
-  m_nh_srv_get_output_register_int = get_node()->create_service<dsr_msgs2::srv::GetOutputRegisterInt>("plc/get_output_register_int", get_output_register_int_cb);
-  m_nh_srv_get_output_register_bit = get_node()->create_service<dsr_msgs2::srv::GetOutputRegisterBit>("plc/get_output_register_bit", get_output_register_bit_cb);
-  m_nh_srv_get_output_register_float = get_node()->create_service<dsr_msgs2::srv::GetOutputRegisterFloat>("plc/get_output_register_float", get_output_register_float_cb);
+  m_nh_srv_get_input_register_int = get_node()->create_service<dsr_msgs2::srv::GetInputRegisterInt>(svc_prefix_ + "plc/get_input_register_int", get_input_register_int_cb);
+  m_nh_srv_get_input_register_bit = get_node()->create_service<dsr_msgs2::srv::GetInputRegisterBit>(svc_prefix_ + "plc/get_input_register_bit", get_input_register_bit_cb);
+  m_nh_srv_get_input_register_float = get_node()->create_service<dsr_msgs2::srv::GetInputRegisterFloat>(svc_prefix_ + "plc/get_input_register_float", get_input_register_float_cb);
+  m_nh_srv_set_output_register_int = get_node()->create_service<dsr_msgs2::srv::SetOutputRegisterInt>(svc_prefix_ + "plc/set_output_register_int", set_output_register_int_cb);
+  m_nh_srv_set_output_register_bit = get_node()->create_service<dsr_msgs2::srv::SetOutputRegisterBit>(svc_prefix_ + "plc/set_output_register_bit", set_output_register_bit_cb);
+  m_nh_srv_set_output_register_float = get_node()->create_service<dsr_msgs2::srv::SetOutputRegisterFloat>(svc_prefix_ + "plc/set_output_register_float", set_output_register_float_cb);
+  m_nh_srv_get_output_register_int = get_node()->create_service<dsr_msgs2::srv::GetOutputRegisterInt>(svc_prefix_ + "plc/get_output_register_int", get_output_register_int_cb);
+  m_nh_srv_get_output_register_bit = get_node()->create_service<dsr_msgs2::srv::GetOutputRegisterBit>(svc_prefix_ + "plc/get_output_register_bit", get_output_register_bit_cb);
+  m_nh_srv_get_output_register_float = get_node()->create_service<dsr_msgs2::srv::GetOutputRegisterFloat>(svc_prefix_ + "plc/get_output_register_float", get_output_register_float_cb);
 
   // H2R Action Servers
   // MovejH2r and MovelH2r action type definitions
@@ -3043,6 +3055,9 @@ void OnMonitoringModbusCB (const LPMONITORING_MODBUS pModbus)
 
 void OnMonitoringStateCB(const ROBOT_STATE eState)
 {
+    if (!g_callback_drfl) {
+        return;
+    }
 
     switch((unsigned char)eState)
     {  
@@ -3055,31 +3070,31 @@ void OnMonitoringStateCB(const ROBOT_STATE eState)
         break;
     case STATE_SAFE_STOP:
         if (g_bHasControlAuthority) {
-            Drfl->set_safe_stop_reset_type(SAFE_STOP_RESET_TYPE_DEFAULT);
-            Drfl->set_robot_control(CONTROL_RESET_SAFET_STOP);
+            g_callback_drfl->set_safe_stop_reset_type(SAFE_STOP_RESET_TYPE_DEFAULT);
+            g_callback_drfl->set_robot_control(CONTROL_RESET_SAFET_STOP);
             // Drfl->set_safety_mode(SAFETY_MODE_AUTONOMOUS,SAFETY_MODE_EVENT_MOVE);
         }
         break;
     case STATE_SAFE_OFF:
         if (g_bHasControlAuthority){
             if (init_state){
-            Drfl->set_robot_control(CONTROL_SERVO_ON);
-            Drfl->set_robot_mode(ROBOT_MODE_AUTONOMOUS);   //Idle Servo Off 후 servo on 하는 상황 발생 시 set_robot_mode 명령을 전송해 manual 로 전환. add 2020/04/28
+            g_callback_drfl->set_robot_control(CONTROL_SERVO_ON);
+            g_callback_drfl->set_robot_mode(ROBOT_MODE_AUTONOMOUS);   //Idle Servo Off 후 servo on 하는 상황 발생 시 set_robot_mode 명령을 전송해 manual 로 전환. add 2020/04/28
             // Drfl->set_safety_mode(SAFETY_MODE_AUTONOMOUS,SAFETY_MODE_EVENT_MOVE);
             init_state = FALSE;
             }
         } 
         break;
     case STATE_SAFE_STOP2:
-        if (g_bHasControlAuthority) Drfl->set_robot_control(CONTROL_RECOVERY_SAFE_STOP);
+        if (g_bHasControlAuthority) g_callback_drfl->set_robot_control(CONTROL_RECOVERY_SAFE_STOP);
         break;
     case STATE_SAFE_OFF2:
         if (g_bHasControlAuthority) {
-            Drfl->set_robot_control(CONTROL_RECOVERY_SAFE_OFF);
+            g_callback_drfl->set_robot_control(CONTROL_RECOVERY_SAFE_OFF);
         }
         break;
     case STATE_RECOVERY:
-        Drfl->set_robot_control(CONTROL_RESET_RECOVERY);
+        g_callback_drfl->set_robot_control(CONTROL_RESET_RECOVERY);
         break;
     default:
         break;
@@ -3092,13 +3107,16 @@ void OnMonitoringStateCB(const ROBOT_STATE eState)
 
 void OnMonitoringAccessControlCB(const MONITORING_ACCESS_CONTROL eAccCtrl)
 {
+    if (!g_callback_drfl) {
+        return;
+    }
     // Only work within 50msec
 
     // cout << "[callback OnMonitoringAccessControlCB] eAccCtrl: " << eAccCtrl << endl;
     switch(eAccCtrl)
     {
     case MONITORING_ACCESS_CONTROL_REQUEST:
-        Drfl->ManageAccessControl(MANAGE_ACCESS_CONTROL_RESPONSE_NO);
+        g_callback_drfl->ManageAccessControl(MANAGE_ACCESS_CONTROL_RESPONSE_NO);
         //Drfl->TransitControlAuth(MANaGE_ACCESS_CONTROL_RESPONSE_YES);
         break;
     case MONITORING_ACCESS_CONTROL_GRANT:
@@ -3106,7 +3124,7 @@ void OnMonitoringAccessControlCB(const MONITORING_ACCESS_CONTROL eAccCtrl)
         RCLCPP_INFO(rclcpp::get_logger("dsr_controller2"),"    Access control granted ");
         RCLCPP_INFO(rclcpp::get_logger("dsr_controller2"),"_______________________________________________\n");   
         g_bHasControlAuthority = TRUE;
-        OnMonitoringStateCB(Drfl->GetRobotState());
+        OnMonitoringStateCB(g_callback_drfl->GetRobotState());
         break;
     case MONITORING_ACCESS_CONTROL_DENY:
         RCLCPP_INFO(rclcpp::get_logger("dsr_controller2"),"_______________________________________________\n");   
@@ -3116,7 +3134,7 @@ void OnMonitoringAccessControlCB(const MONITORING_ACCESS_CONTROL eAccCtrl)
     case MONITORING_ACCESS_CONTROL_LOSS:
         g_bHasControlAuthority = FALSE;
         if (g_bTpInitailizingComplted) {
-            Drfl->ManageAccessControl(MANAGE_ACCESS_CONTROL_REQUEST);
+            g_callback_drfl->ManageAccessControl(MANAGE_ACCESS_CONTROL_REQUEST);
         }
         break;
     default:
@@ -3180,8 +3198,8 @@ void OnLogAlarm(LPLOG_ALARM pLogAlarm)
 void OnDisConnected(){
 	RCLCPP_ERROR(rclcpp::get_logger("dsr_controller2"),"Disconnected.. Please check out Ethernet Cable.. ");
     // Ensure connection is closed
-    if(Drfl) {
-        Drfl->close_connection();
+    if(g_callback_drfl) {
+        g_callback_drfl->close_connection();
     }
     if(rclcpp::ok() && instance && instance->disconnect_pub_)
     {
