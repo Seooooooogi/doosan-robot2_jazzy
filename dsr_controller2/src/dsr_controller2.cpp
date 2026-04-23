@@ -3094,7 +3094,7 @@ void OnMonitoringStateCB(const ROBOT_STATE eState)
         }
         break;
     case STATE_RECOVERY:
-        g_callback_drfl->set_robot_control(CONTROL_RESET_RECOVERY);
+        // Drfl->set_robot_control(CONTROL_RESET_RECOVERY);
         break;
     default:
         break;
