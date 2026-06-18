@@ -54,7 +54,7 @@ cd ~/ros2_ws/src
 Clone the required repositories:
 
 ```bash
-git clone -b jazzy https://github.com/doosan-robotics/doosan-robot2.git
+git clone git clone [-b jazzy https://github.com/doosan-robotics/doosan-robot2.git](https://github.com/ROKEY-SPARK/doosan-robot2_jazzy)
 ```
 
 Install dependencies:
